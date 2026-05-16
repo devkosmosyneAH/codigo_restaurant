@@ -1,0 +1,25 @@
+Analyzing restaurant_app...                                     
+
+warning - The value of the field '_clienteSeleccionado' isn't used - lib\features\cotizaciones\presentation\pages\cotizacion_manual_form_page.dart:97:12 - unused_field
+   info - Don't use 'BuildContext's across async gaps - lib\features\cotizaciones\presentation\pages\cotizacion_manual_form_page.dart:835:30 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\features\cotizaciones\presentation\pages\cotizacion_manual_form_page.dart:843:9 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\features\cotizaciones\presentation\pages\cotizacion_manual_form_page.dart:849:9 - use_build_context_synchronously
+warning - The value of the field '_clienteSeleccionado' isn't used - lib\features\cotizaciones\presentation\widgets\cotizacion_sheet.dart:52:12 - unused_field
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:765:46 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:769:53 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:775:49 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:776:49 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:913:46 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:916:47 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:919:47 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:920:83 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:921:76 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:922:50 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:1085:47 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:1085:86 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:1088:46 - unnecessary_non_null_assertion
+warning - The '!' will have no effect because the receiver can't be null - lib\features\reportes\presentation\pages\reportes_page.dart:1091:47 - unnecessary_non_null_assertion
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\reservaciones\presentation\pages\reservas_page.dart:886:58 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\features\reservaciones\presentation\pages\reservas_page.dart:942:58 - use_build_context_synchronously
+
+21 issues found. (ran in 5.9s)

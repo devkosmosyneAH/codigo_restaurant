@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  IMPORTANTE: Este archivo contiene el web client_id de OAuth 2.0.
+  El `default_web_client_id` permite que google_sign_in obtenga tokens
+  que pueden usarse con la Drive API.
+
+  Pasos para regenerar si el client_secret quedó expuesto:
+  1. Ve a https://console.cloud.google.com/
+  2. Selecciona el proyecto "restaurant-pena"
+  3. APIs & Services → Credentials
+  4. Edita el OAuth 2.0 Client "Web client" → Reset secret
+  5. Para Android: añade el SHA-1 de tu keystore de release
+     y crea un nuevo "Android client" si no existe.
+-->
+<resources>
+    <!-- ID del cliente OAuth web (proyecto restaurant-pena) -->
+    <string name="default_web_client_id">891328463493-sfer90v46i6bfuprodvego56tltgli7r.apps.googleusercontent.com</string>
+</resources>

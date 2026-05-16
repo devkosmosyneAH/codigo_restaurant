@@ -1,0 +1,126 @@
+name: restaurant_app
+description: "Sistema de Gestión para Restaurantes - Base Comercial Escalable"
+publish_to: 'none'
+version: 1.0.1+2
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # UI
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.2
+  http: ^1.3.0
+  sqflite: ^2.3.3
+  sqflite_common_ffi: ^2.3.4+4
+  window_manager: ^0.5.1
+  data_table_2: ^2.6.0
+  shared_preferences: ^2.3.3
+  google_fonts: ^6.2.1
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation / Routing
+  go_router: ^14.8.1
+
+  # Database Local (SQLite)
+  sqflite_common_ffi_web: ^0.4.5+2
+  sqflite_common: ^2.5.4+5
+  path: ^1.9.1
+
+  # Dependency Injection & Utilities
+  get_it: ^8.0.3
+  uuid: ^4.5.1
+  intl: ^0.20.2
+  equatable: ^2.0.7
+  dartz: ^0.10.1
+
+  # Firebase (preparado para sincronización futura)
+  # firebase_core: ^latest
+  # cloud_firestore: ^latest
+  # firebase_auth: ^latest
+
+  # Charts para reportes
+  fl_chart: ^0.70.2
+
+  # Generación de PDF e impresión de tickets
+  pdf: ^3.11.3
+  printing: ^5.13.3
+
+  # QR
+  qr_flutter: ^4.1.0
+
+  # Mapa interactivo (OpenStreetMap, sin API key)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+
+  # Google Sign-In + Drive backup
+  google_sign_in: ^6.2.2
+  googleapis: ^13.2.0
+  googleapis_auth: ^1.6.0
+  path_provider: ^2.1.5
+
+  # Enlaces externos (WhatsApp, llamadas)
+  url_launcher: ^6.3.0
+
+  # Íconos de redes sociales (WhatsApp, Facebook, etc.)
+  font_awesome_flutter: ^10.8.0
+
+  # Calendario
+  table_calendar: ^3.1.2
+
+  # Selección de archivos/imágenes
+  file_picker: ^8.0.7
+  image: ^4.5.4
+
+  # Hashing seguro de PINs
+  crypto: ^3.0.6
+  firebase_core: ^4.7.0
+  cloud_firestore: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  riverpod_generator: ^2.6.3
+  build_runner: ^2.4.14
+  mocktail: ^1.0.4
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/database/data.db
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
