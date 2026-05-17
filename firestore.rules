@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasTenantAccess(restaurantId) {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        (request.auth.token.restaurant_id is string &&
+            request.auth.token.restaurant_id == restaurantId) ||
+        (request.auth.token.restaurant_ids is list &&
+            request.auth.token.restaurant_ids.hasAny([restaurantId]))
+      );
+    }
+
+    function requestRestaurantMatches(restaurantId) {
+      return !(request.resource.data.keys().hasAny(['restaurant_id'])) ||
+          request.resource.data.restaurant_id == restaurantId;
+    }
+
+    function resourceRestaurantMatches(restaurantId) {
+      return !(resource.data.keys().hasAny(['restaurant_id'])) ||
+          resource.data.restaurant_id == restaurantId;
+    }
+
+    match /restaurantes/{restaurantId} {
+      allow read, write: if hasTenantAccess(restaurantId);
+
+      match /{document=**} {
+        allow read: if hasTenantAccess(restaurantId) &&
+            resourceRestaurantMatches(restaurantId);
+
+        allow create, update: if hasTenantAccess(restaurantId) &&
+            requestRestaurantMatches(restaurantId);
+
+        allow delete: if hasTenantAccess(restaurantId) &&
+            resourceRestaurantMatches(restaurantId);
+      }
+    }
+
+    match /sync_audit/{auditId} {
+      allow read: if isSignedIn() &&
+          resource.data.restaurant_id is string &&
+          hasTenantAccess(resource.data.restaurant_id);
+
+      allow create: if isSignedIn() &&
+          request.resource.data.restaurant_id is string &&
+          hasTenantAccess(request.resource.data.restaurant_id);
+
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -178,18 +178,41 @@ class UsuarioLocalDataSourceImpl implements UsuarioLocalDataSource {
 
   @override
   Future<UsuarioModel?> verificarPin(String restaurantId, String pin) async {
-    // Hashear el PIN ingresado y comparar con el almacenado
-    final hashedPin = PinHasher.hash(pin);
+    // Se valida en memoria para soportar hashes v2 y legacy.
     final rows = await _dbHelper.query(
       'usuarios',
-      where: 'restaurant_id = ? AND pin = ? AND activo = 1',
-      whereArgs: [restaurantId, hashedPin],
-      limit: 1,
+      where: 'restaurant_id = ? AND activo = 1',
+      whereArgs: [restaurantId],
     );
-    if (rows.isEmpty) return null;
-    // Devolver con PIN en texto plano para la sesión en memoria (nunca se re-persiste)
-    final model = UsuarioModel.fromMap(rows.first);
-    return UsuarioModel.fromMap({...model.toMap(), 'pin': pin});
+
+    for (final row in rows) {
+      final storedPin = (row['pin'] as String?)?.trim() ?? '';
+      if (storedPin.isEmpty) continue;
+      if (!PinHasher.verify(pin, storedPin)) continue;
+
+      final model = UsuarioModel.fromMap(row);
+
+      if (PinHasher.requiresMigration(storedPin)) {
+        final upgradedHash = PinHasher.hash(pin);
+        await _dbHelper.update(
+          'usuarios',
+          {'pin': upgradedHash, 'updated_at': DateTime.now().toIso8601String()},
+          where: 'id = ?',
+          whereArgs: [model.id],
+        );
+        await _syncManager.registrarOperacion(
+          tabla: 'usuarios',
+          registroId: model.id,
+          operacion: SyncOperation.update,
+          restaurantId: restaurantId,
+        );
+      }
+
+      // Devolver con PIN en texto plano para la sesión en memoria.
+      return UsuarioModel.fromMap({...model.toMap(), 'pin': pin});
+    }
+
+    return null;
   }
 
   @override

@@ -122,6 +122,8 @@ class _ClienteFormDialogState extends ConsumerState<ClienteFormDialog> {
       clienteProvider.select((s) => s.isProcessing),
     );
     final cs = Theme.of(context).colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.92).clamp(280.0, 480.0);
 
     return AlertDialog(
       title: Row(
@@ -132,7 +134,7 @@ class _ClienteFormDialogState extends ConsumerState<ClienteFormDialog> {
         ],
       ),
       content: SizedBox(
-        width: 480,
+        width: dialogWidth,
         child: Form(
           key: _formKey,
           child: SingleChildScrollView(

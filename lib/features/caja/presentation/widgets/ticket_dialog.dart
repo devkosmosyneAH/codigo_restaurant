@@ -93,123 +93,127 @@ class TicketDialog extends StatelessWidget {
     final claveAcceso = venta.sriClaveAcceso ?? '';
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Row(
-          children: [
-            const Icon(Icons.code_rounded, size: 20),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Comprobante electrónico')),
-          ],
-        ),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Clave de acceso
-                Text(
-                  'Clave de acceso SRI',
-                  style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.1,
-                    fontWeight: FontWeight.bold,
+      builder: (ctx) {
+        final viewport = MediaQuery.sizeOf(ctx);
+        final dialogWidth = (viewport.width * 0.92).clamp(280.0, 560.0);
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.code_rounded, size: 20),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Comprobante electrónico')),
+            ],
+          ),
+          content: SizedBox(
+            width: dialogWidth,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Clave de acceso
+                  Text(
+                    'Clave de acceso SRI',
+                    style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                      letterSpacing: 1.1,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SelectableText(
-                        claveAcceso,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SelectableText(
+                          claveAcceso,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                          ),
                         ),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        tooltip: 'Copiar clave',
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: claveAcceso));
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(
+                              content: Text('Clave de acceso copiada.'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                  const Divider(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Estado',
+                        style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Chip(
+                        label: Text(
+                          venta.estadoSri.label,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        backgroundColor:
+                            venta.estadoSri == EstadoComprobanteSri.preparado
+                            ? Colors.green.withValues(alpha: 0.15)
+                            : Colors.orange.withValues(alpha: 0.15),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.copy_rounded, size: 18),
-                      tooltip: 'Copiar clave',
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: claveAcceso));
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                            content: Text('Clave de acceso copiada.'),
-                            duration: Duration(seconds: 2),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const Divider(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Estado',
-                      style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
-                        letterSpacing: 1.1,
-                        fontWeight: FontWeight.bold,
+                    child: Text(
+                      xml.isNotEmpty
+                          ? xml
+                          : 'El XML se genera en tiempo real al cobrar. Registra una nueva venta de tipo Factura para verlo.',
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 10.5,
                       ),
                     ),
-                    Chip(
-                      label: Text(
-                        venta.estadoSri.label,
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                      padding: EdgeInsets.zero,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor:
-                          venta.estadoSri == EstadoComprobanteSri.preparado
-                          ? Colors.green.withValues(alpha: 0.15)
-                          : Colors.orange.withValues(alpha: 0.15),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
                   ),
-                  child: Text(
-                    xml.isNotEmpty
-                        ? xml
-                        : 'El XML se genera en tiempo real al cobrar. Registra una nueva venta de tipo Factura para verlo.',
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 10.5,
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withValues(alpha: 0.07),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'La transmisión real al SRI requiere activar el backend puente. '
+                      'El XML y la clave de acceso ya están generados y listos para enviarse.',
+                      style: TextStyle(fontSize: 11),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text(
-                    'La transmisión real al SRI requiere activar el backend puente. '
-                    'El XML y la clave de acceso ya están generados y listos para enviarse.',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cerrar'),
-          ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -551,12 +555,18 @@ class TicketDialog extends StatelessWidget {
     final fmt = NumberFormat('#,##0.00', 'es_MX');
     final fecha = DateFormat('dd/MM/yyyy').format(venta.createdAt);
     final hora = DateFormat('HH:mm').format(venta.createdAt);
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogMaxWidth = (viewport.width * 0.92).clamp(280.0, 400.0);
+    final dialogMaxHeight = (viewport.height * 0.90).clamp(420.0, 760.0);
 
     return Dialog(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 660),
+        constraints: BoxConstraints(
+          maxWidth: dialogMaxWidth,
+          maxHeight: dialogMaxHeight,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

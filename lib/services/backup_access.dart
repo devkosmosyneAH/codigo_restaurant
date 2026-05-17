@@ -4,6 +4,9 @@ import 'backup_access_stub.dart'
 
 Future<Map<String, dynamic>> getBackupOverview() => impl.getBackupOverview();
 
+Future<void> performAutomaticBackupIfNeeded() =>
+    impl.performAutomaticBackupIfNeeded();
+
 Future<bool> createManualBackup({String? customName}) =>
     impl.createManualBackup(customName: customName);
 

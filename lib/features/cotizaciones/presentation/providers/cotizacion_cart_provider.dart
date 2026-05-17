@@ -8,7 +8,9 @@ class CotizacionCartItem {
 
   const CotizacionCartItem({required this.producto, required this.cantidad});
 
-  double get subtotal => cantidad * producto.precio;
+  double get precioUnitario => producto.precioReferencial;
+
+  double get subtotal => cantidad * precioUnitario;
 
   CotizacionCartItem copyWith({Producto? producto, int? cantidad}) {
     return CotizacionCartItem(

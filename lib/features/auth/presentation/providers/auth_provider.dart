@@ -40,11 +40,25 @@ class AuthChangeNotifier extends ChangeNotifier {
     return activation.canAccessApp;
   }
 
+  Future<void> _audit(
+    String eventType, {
+    String? userId,
+    Map<String, dynamic>? detail,
+  }) async {
+    await SessionService.logSecurityEvent(
+      eventType: eventType,
+      userId: userId,
+      restaurantId: AppConstants.defaultRestaurantId,
+      detail: detail,
+    );
+  }
+
   /// Autentica al usuario mediante PIN de 4 dígitos.
   ///
   /// Retorna `null` en caso de éxito, o un mensaje de error.
   Future<String?> loginWithPin(String pin) async {
     if (!_canUseActivatedApp()) {
+      await _audit('login_blocked_activation');
       return sl<ActivationChangeNotifier>().status.message;
     }
 
@@ -52,6 +66,10 @@ class AuthChangeNotifier extends ChangeNotifier {
     final lockUntil = await SessionService.getPinLockUntil();
 
     if (lockUntil != null && lockUntil.isAfter(now)) {
+      await _audit(
+        'login_blocked_lockout',
+        detail: {'remaining_seconds': lockUntil.difference(now).inSeconds},
+      );
       return _lockMessage(lockUntil.difference(now));
     }
 
@@ -69,17 +87,27 @@ class AuthChangeNotifier extends ChangeNotifier {
         notifyListeners();
 
         if (attempts >= _maxFailedAttempts) {
+          await _audit('login_lockout_applied', detail: {'attempts': attempts});
           return 'Demasiados intentos fallidos. Acceso bloqueado por 5 minutos.';
         }
 
         final remaining = _maxFailedAttempts - attempts;
         final intentoLabel = remaining == 1 ? 'intento' : 'intentos';
+        await _audit(
+          'login_failed_pin',
+          detail: {'attempts': attempts, 'remaining': remaining},
+        );
         return 'PIN incorrecto. Te quedan $remaining $intentoLabel antes del bloqueo.';
       }
 
       await SessionService.clearPinSecurityState();
       _usuario = usuario;
       await SessionService.saveUserSession(_toSessionMap(usuario));
+      await _audit(
+        'login_success',
+        userId: usuario.id,
+        detail: {'rol': usuario.rol.value},
+      );
       sl<TenantContext>().setFromSession(
         restaurantId: usuario.restaurantId,
         userId: usuario.id,
@@ -93,6 +121,7 @@ class AuthChangeNotifier extends ChangeNotifier {
   /// Restaura una sesión previamente guardada si sigue siendo válida.
   Future<void> restoreSession() async {
     if (!_canUseActivatedApp()) {
+      await _audit('session_forced_logout_activation');
       await SessionService.logout();
       return;
     }
@@ -103,11 +132,13 @@ class AuthChangeNotifier extends ChangeNotifier {
     try {
       final usuario = _fromSessionMap(session);
       if (!usuario.activo) {
+        await _audit('session_invalid_inactive', userId: usuario.id);
         await SessionService.logout();
         return;
       }
 
       _usuario = usuario;
+      await _audit('session_restored', userId: usuario.id);
       sl<TenantContext>().setFromSession(
         restaurantId: usuario.restaurantId,
         userId: usuario.id,
@@ -115,12 +146,17 @@ class AuthChangeNotifier extends ChangeNotifier {
       );
       notifyListeners();
     } catch (_) {
+      await _audit('session_restore_failed');
       await SessionService.logout();
     }
   }
 
   /// Cierra la sesión actual y limpia la persistencia local.
   Future<void> logout() async {
+    final current = _usuario;
+    if (current != null) {
+      await _audit('logout', userId: current.id);
+    }
     _usuario = null;
     sl<TenantContext>().clear();
     await SessionService.logout();

@@ -53,7 +53,7 @@ class CotizacionNotifier extends StateNotifier<CotizacionState> {
         productoId: item.producto.id,
         productoNombre: item.producto.nombre,
         cantidad: item.cantidad,
-        precioUnitario: item.producto.precio,
+        precioUnitario: item.precioUnitario,
         subtotal: item.subtotal,
       );
     }).toList();

@@ -141,11 +141,14 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (_, i) {
                     final item = cart.items[i];
+                    final unitario = item.precioUnitario;
+                    final tieneVariantes = item.producto.tieneVariantes;
+                    final subtitle = tieneVariantes
+                        ? 'Desde ${AppConstants.currencySymbol}${unitario.toStringAsFixed(2)} · ${item.producto.variantes.length} opciones'
+                        : '${AppConstants.currencySymbol}${unitario.toStringAsFixed(2)}';
                     return ListTile(
                       title: Text(item.producto.nombre),
-                      subtitle: Text(
-                        '${AppConstants.currencySymbol}${item.producto.precio.toStringAsFixed(2)}',
-                      ),
+                      subtitle: Text(subtitle),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

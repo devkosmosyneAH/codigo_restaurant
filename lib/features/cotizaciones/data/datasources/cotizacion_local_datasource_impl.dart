@@ -56,15 +56,17 @@ class CotizacionLocalDataSourceImpl implements CotizacionLocalDataSource {
         orderBy: 'created_at DESC',
       );
 
+      final cotizacionIds = rows
+          .map((row) => row['id'])
+          .whereType<String>()
+          .toList(growable: false);
+      final itemsByCotizacion = await _getItemsByCotizacionIds(cotizacionIds);
+
       final cotizaciones = <CotizacionModel>[];
       for (final row in rows) {
-        final itemsRows = await _dbHelper.query(
-          _tableItems,
-          where: 'cotizacion_id = ?',
-          whereArgs: [row['id']],
-          orderBy: 'rowid ASC',
-        );
-        final items = itemsRows.map(CotizacionItemModel.fromMap).toList();
+        final cotizacionId = row['id'] as String;
+        final items =
+            itemsByCotizacion[cotizacionId] ?? const <CotizacionItemModel>[];
         cotizaciones.add(CotizacionModel.fromMap(row, items: items));
       }
 
@@ -130,6 +132,17 @@ class CotizacionLocalDataSourceImpl implements CotizacionLocalDataSource {
   @override
   Future<void> deleteCotizacion(String cotizacionId) async {
     try {
+      final itemRows = await _dbHelper.query(
+        _tableItems,
+        where: 'cotizacion_id = ?',
+        whereArgs: [cotizacionId],
+      );
+      final itemIds = itemRows
+          .map((row) => row['id'])
+          .whereType<String>()
+          .where((itemId) => itemId.isNotEmpty)
+          .toList();
+
       await _dbHelper.transaction((txn) async {
         await txn.delete(
           _tableItems,
@@ -142,6 +155,16 @@ class CotizacionLocalDataSourceImpl implements CotizacionLocalDataSource {
           whereArgs: [cotizacionId],
         );
       });
+
+      for (final itemId in itemIds) {
+        await _syncManager.registrarOperacion(
+          tabla: _tableItems,
+          registroId: itemId,
+          operacion: SyncOperation.delete,
+          restaurantId: _tenantContext.restaurantId,
+        );
+      }
+
       await _syncManager.registrarOperacion(
         tabla: _tableCotizaciones,
         registroId: cotizacionId,
@@ -151,5 +174,26 @@ class CotizacionLocalDataSourceImpl implements CotizacionLocalDataSource {
     } catch (e) {
       throw DatabaseException(message: 'Error al eliminar cotizacion: $e');
     }
+  }
+
+  Future<Map<String, List<CotizacionItemModel>>> _getItemsByCotizacionIds(
+    List<String> cotizacionIds,
+  ) async {
+    if (cotizacionIds.isEmpty) return const {};
+
+    final placeholders = List.filled(cotizacionIds.length, '?').join(',');
+    final rows = await _dbHelper.rawQuery('''
+      SELECT *
+      FROM $_tableItems
+      WHERE cotizacion_id IN ($placeholders)
+      ORDER BY cotizacion_id ASC, rowid ASC
+      ''', cotizacionIds);
+
+    final grouped = <String, List<CotizacionItemModel>>{};
+    for (final row in rows) {
+      final item = CotizacionItemModel.fromMap(row);
+      grouped.putIfAbsent(item.cotizacionId, () => []).add(item);
+    }
+    return grouped;
   }
 }

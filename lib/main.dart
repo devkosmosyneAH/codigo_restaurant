@@ -1,5 +1,4 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -11,6 +10,7 @@ import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/theme/app_theme.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
 
 /// Punto de entrada de la aplicación RestaurantApp.
 ///
@@ -35,10 +35,8 @@ Future<void> main() async {
   // 🔧 INICIALIZACIÓN ESPECÍFICA POR PLATAFORMA
   await initializePlatformSpecific();
 
-  // 🔥 INICIALIZAR FIREBASE (solo Web, Android e iOS)
-  if (kIsWeb ||
-      defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS) {
+  // 🔥 INICIALIZAR FIREBASE (solo en plataformas configuradas)
+  if (DefaultFirebaseOptions.isSupportedPlatform) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
@@ -52,6 +50,9 @@ Future<void> main() async {
 
   // Restaurar sesión local si existe para entrar directo al rol anterior.
   await sl<AuthChangeNotifier>().restoreSession();
+
+  // Iniciar sincronizacion hibrida automatica (push + pull realtime).
+  await sl<HybridSyncOrchestrator>().start();
 
   runApp(const ProviderScope(child: RestaurantApp()));
 }

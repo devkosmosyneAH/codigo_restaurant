@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
+import 'package:restaurant_app/core/di/injection_container.dart';
+import 'package:restaurant_app/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/categoria_form_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_card.dart';
@@ -158,6 +162,12 @@ class _MenuPageState extends ConsumerState<MenuPage>
   }
 
   Future<void> _eliminarProducto(String productoId, String nombre) async {
+    final producto = ref
+        .read(menuProvider)
+        .productos
+        .where((p) => p.id == productoId)
+        .firstOrNull;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -179,6 +189,34 @@ class _MenuPageState extends ConsumerState<MenuPage>
       ),
     );
     if (confirm != true || !mounted) return;
+
+    final driveFileId = producto?.driveFileId;
+    if (driveFileId != null && driveFileId.isNotEmpty) {
+      try {
+        final driveService = sl<DriveMenuConnectionService>();
+        final driveQueue = sl<DriveImageSyncQueueService>();
+        final signedIn = await driveService.signIn();
+        final restaurantId =
+            producto?.restaurantId ?? sl<TenantContext>().restaurantId;
+
+        var deleted = false;
+        if (signedIn) {
+          deleted = await driveService.tryDeleteProductImage(driveFileId);
+        }
+
+        if (!deleted) {
+          await driveQueue.enqueueDeleteImage(
+            restaurantId: restaurantId,
+            fileId: driveFileId,
+          );
+          // Intento oportunista no interactivo para drenar cola si ya hay sesión.
+          await driveQueue.processPendingDeletes();
+        }
+      } catch (_) {
+        // No bloquea el borrado local si Drive falla.
+      }
+    }
+
     final ok = await ref
         .read(menuProvider.notifier)
         .eliminarProducto(productoId);

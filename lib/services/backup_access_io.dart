@@ -7,6 +7,10 @@ import 'package:restaurant_app/services/backup_service.dart';
 import 'package:restaurant_app/services/database_location_service.dart';
 import 'package:restaurant_app/services/database_service.dart';
 
+Future<void> performAutomaticBackupIfNeeded() async {
+  await BackupService.performAutomaticBackupIfNeeded();
+}
+
 Future<Map<String, dynamic>> getBackupOverview() async {
   final stats = await BackupService.getBackupStats();
   final backups = await BackupService.listBackups();

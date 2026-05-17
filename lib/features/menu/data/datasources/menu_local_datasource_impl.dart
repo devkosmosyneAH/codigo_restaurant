@@ -148,12 +148,19 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         orderBy: 'nombre ASC',
       );
 
-      final productos = <ProductoModel>[];
-      for (final row in results) {
-        final variantes = await getVariantesByProducto(row['id'] as String);
-        productos.add(ProductoModel.fromMap(row, variantes: variantes));
-      }
-      return productos;
+      final productoIds = results
+          .map((row) => row['id'] as String)
+          .toList(growable: false);
+      final variantesByProducto = await _getVariantesByProductoIds(productoIds);
+
+      return results
+          .map((row) {
+            final productoId = row['id'] as String;
+            final variantes =
+                variantesByProducto[productoId] ?? const <VarianteModel>[];
+            return ProductoModel.fromMap(row, variantes: variantes);
+          })
+          .toList(growable: false);
     } catch (e) {
       throw DatabaseException(message: 'Error al obtener productos: $e');
     }
@@ -171,12 +178,19 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         orderBy: 'nombre ASC',
       );
 
-      final productos = <ProductoModel>[];
-      for (final row in results) {
-        final variantes = await getVariantesByProducto(row['id'] as String);
-        productos.add(ProductoModel.fromMap(row, variantes: variantes));
-      }
-      return productos;
+      final productoIds = results
+          .map((row) => row['id'] as String)
+          .toList(growable: false);
+      final variantesByProducto = await _getVariantesByProductoIds(productoIds);
+
+      return results
+          .map((row) {
+            final productoId = row['id'] as String;
+            final variantes =
+                variantesByProducto[productoId] ?? const <VarianteModel>[];
+            return ProductoModel.fromMap(row, variantes: variantes);
+          })
+          .toList(growable: false);
     } catch (e) {
       throw DatabaseException(
         message: 'Error al obtener productos de categoría: $e',
@@ -311,6 +325,28 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   }
 
   // ── Variantes ────────────────────────────────────────────────────
+
+  Future<Map<String, List<VarianteModel>>> _getVariantesByProductoIds(
+    List<String> productoIds,
+  ) async {
+    if (productoIds.isEmpty) return const {};
+
+    final placeholders = List.filled(productoIds.length, '?').join(',');
+    final rows = await _dbHelper.rawQuery('''
+        SELECT *
+        FROM $_tableVariantes
+        WHERE activo = 1
+          AND producto_id IN ($placeholders)
+        ORDER BY producto_id ASC, precio ASC
+      ''', productoIds);
+
+    final grouped = <String, List<VarianteModel>>{};
+    for (final row in rows) {
+      final variante = VarianteModel.fromMap(row);
+      grouped.putIfAbsent(variante.productoId, () => []).add(variante);
+    }
+    return grouped;
+  }
 
   @override
   Future<List<VarianteModel>> getVariantesByProducto(String productoId) async {

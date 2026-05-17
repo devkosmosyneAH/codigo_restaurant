@@ -26,13 +26,17 @@ class ReservaLocalDataSourceImpl implements ReservaLocalDataSource {
   @override
   Future<void> createReserva(ReservaModel reserva) async {
     try {
-      await _dbHelper.insert(_table, reserva.toMap());
+      final data = {...reserva.toMap()};
+      data['updated_at'] =
+          data['created_at'] ?? DateTime.now().toIso8601String();
+
+      await _dbHelper.insert(_table, data);
       await _syncManager.registrarOperacion(
         tabla: _table,
         registroId: reserva.id,
         operacion: SyncOperation.insert,
         restaurantId: reserva.restaurantId,
-        datos: reserva.toMap(),
+        datos: data,
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al crear reserva: $e');
@@ -42,9 +46,12 @@ class ReservaLocalDataSourceImpl implements ReservaLocalDataSource {
   @override
   Future<void> updateReserva(ReservaModel reserva) async {
     try {
+      final data = {...reserva.toMap()};
+      data['updated_at'] = DateTime.now().toIso8601String();
+
       final rows = await _dbHelper.update(
         _table,
-        reserva.toMap(),
+        data,
         where: 'id = ?',
         whereArgs: [reserva.id],
       );
@@ -58,7 +65,7 @@ class ReservaLocalDataSourceImpl implements ReservaLocalDataSource {
         registroId: reserva.id,
         operacion: SyncOperation.update,
         restaurantId: reserva.restaurantId,
-        datos: reserva.toMap(),
+        datos: data,
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al actualizar reserva: $e');

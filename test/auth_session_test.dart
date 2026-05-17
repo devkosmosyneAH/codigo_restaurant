@@ -12,11 +12,13 @@ void main() {
   group('AuthChangeNotifier session persistence', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      SessionService.overrideSensitiveStore(InMemorySensitiveSessionStore());
       await sl.reset();
       sl.registerSingleton<TenantContext>(TenantContext());
     });
 
     tearDown(() async {
+      SessionService.resetSensitiveStore();
       await sl.reset();
     });
 
@@ -30,10 +32,13 @@ void main() {
       final auth = AuthChangeNotifier();
       await auth.restoreSession();
 
+      final prefs = await SharedPreferences.getInstance();
+
       expect(auth.isAuthenticated, isTrue);
       expect(auth.usuario?.id, 'usr_admin_01');
       expect(auth.usuario?.rol, RolUsuario.administrador);
       expect(auth.usuario?.nombre, 'Administrador');
+      expect(prefs.getString('user_session'), isNull);
     });
 
     test('logout clears memory and persisted session', () async {

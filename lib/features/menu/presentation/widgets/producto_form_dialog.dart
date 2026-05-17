@@ -4,8 +4,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
+import 'package:restaurant_app/core/config/app_environment.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/menu/domain/entities/categoria.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
 import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
@@ -51,13 +54,21 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
   late final TextEditingController _precioCtrl;
   late final TextEditingController _imagenUrlCtrl;
   String? _selectedImageData;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageMimeType;
+  String? _selectedImageExtension;
   late String _categoriaId;
   bool _disponible = true;
   bool _activo = true;
   bool _pickingImage = false;
+  bool _submitting = false;
+  bool _checkingDriveSession = false;
+  bool _driveSessionReady = false;
+  String? _driveOwnerEmail;
   List<_VarianteEditable> _variantes = [];
 
   bool get _isEditing => widget.producto != null;
+  bool get _isBusy => _pickingImage || _submitting;
 
   @override
   void initState() {
@@ -68,10 +79,11 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     _precioCtrl = TextEditingController(
       text: p != null ? p.precio.toStringAsFixed(2) : '',
     );
-    final initialImage = p?.imagenUrl?.trim() ?? '';
+    final initialImage = (p?.drivePublicUrl ?? p?.imagenUrl)?.trim() ?? '';
     _selectedImageData = initialImage.startsWith('data:image')
         ? initialImage
         : null;
+    _hydrateSelectedImageMetaFromDataUri();
     _imagenUrlCtrl = TextEditingController(
       text: _selectedImageData == null ? initialImage : '',
     );
@@ -83,6 +95,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     _variantes = (p?.variantes ?? [])
         .map((v) => _VarianteEditable.fromEntity(v))
         .toList();
+    _restoreDriveSession();
   }
 
   @override
@@ -110,10 +123,87 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     });
   }
 
+  Future<void> _restoreDriveSession() async {
+    if (!AppEnvironment.isDriveConfigured) return;
+
+    setState(() => _checkingDriveSession = true);
+    final driveService = sl<DriveMenuConnectionService>();
+    final restored = await driveService.restoreSessionSilently();
+
+    if (!mounted) return;
+    setState(() {
+      _checkingDriveSession = false;
+      _driveSessionReady = restored;
+      _driveOwnerEmail = driveService.currentEmail;
+    });
+  }
+
+  Future<void> _connectDriveNow() async {
+    if (_checkingDriveSession) return;
+
+    setState(() => _checkingDriveSession = true);
+    final driveService = sl<DriveMenuConnectionService>();
+    final signedIn = await driveService.signIn();
+
+    if (!mounted) return;
+    setState(() {
+      _checkingDriveSession = false;
+      _driveSessionReady = signedIn;
+      _driveOwnerEmail = driveService.currentEmail;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          signedIn
+              ? 'Google Drive conectado correctamente.'
+              : 'No se pudo conectar con Google Drive.',
+        ),
+      ),
+    );
+  }
+
   String get _imageValue {
     final selected = _selectedImageData?.trim();
     if (selected != null && selected.isNotEmpty) return selected;
     return _imagenUrlCtrl.text.trim();
+  }
+
+  void _hydrateSelectedImageMetaFromDataUri() {
+    final raw = _selectedImageData;
+    if (raw == null || !raw.startsWith('data:image')) return;
+    final commaIndex = raw.indexOf(',');
+    if (commaIndex == -1) return;
+
+    final header = raw.substring(0, commaIndex);
+    final mimeType = header
+        .replaceFirst('data:', '')
+        .replaceFirst(';base64', '');
+    try {
+      _selectedImageBytes = base64Decode(raw.substring(commaIndex + 1));
+      _selectedImageMimeType = mimeType;
+      _selectedImageExtension = _extensionFromMime(mimeType);
+    } catch (_) {
+      _selectedImageBytes = null;
+      _selectedImageMimeType = null;
+      _selectedImageExtension = null;
+    }
+  }
+
+  String _extensionFromMime(String mimeType) {
+    switch (mimeType.toLowerCase()) {
+      case 'image/png':
+        return 'png';
+      case 'image/webp':
+        return 'webp';
+      case 'image/gif':
+        return 'gif';
+      case 'image/jpeg':
+      case 'image/jpg':
+        return 'jpg';
+      default:
+        return 'jpg';
+    }
   }
 
   Future<void> _pickImage() async {
@@ -165,6 +255,9 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
           };
 
       _selectedImageData = 'data:$mimeType;base64,${base64Encode(imageBytes)}';
+      _selectedImageBytes = imageBytes;
+      _selectedImageMimeType = mimeType;
+      _selectedImageExtension = _extensionFromMime(mimeType);
       _imagenUrlCtrl.clear();
     } catch (_) {
       if (!mounted) return;
@@ -314,10 +407,102 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     );
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+  Widget _buildDriveStatus(ThemeData theme) {
+    final cs = theme.colorScheme;
+
+    if (!AppEnvironment.isDriveConfigured) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: cs.errorContainer.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: cs.errorContainer),
+        ),
+        child: Text(
+          'Drive no está configurado en este entorno. '
+          'Podrás guardar URL manual, pero no subir foto directa.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: cs.onErrorContainer,
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+
+    final statusText = _driveSessionReady
+        ? 'Conectado${_driveOwnerEmail != null ? ': $_driveOwnerEmail' : ''}'
+        : 'Sin conectar';
+    final statusColor = _driveSessionReady
+        ? Colors.green.shade700
+        : cs.tertiary;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cloud_done_outlined, size: 18, color: statusColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Estado Google Drive: $statusText',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (_checkingDriveSession)
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Las fotos seleccionadas desde el dispositivo se publicarán '
+            'en Drive para que sean visibles en el menú QR.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.35,
+            ),
+          ),
+          if (!_driveSessionReady) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _checkingDriveSession ? null : _connectDriveNow,
+                icon: const Icon(Icons.login_rounded, size: 16),
+                label: const Text('Conectar Google Drive'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate() || _submitting) return;
+
+    setState(() => _submitting = true);
 
     final now = DateTime.now();
+    final tenant = sl<TenantContext>();
+    final restaurantId = widget.producto?.restaurantId ?? tenant.restaurantId;
+    final userId = tenant.userId ?? 'system';
     final productoId = widget.producto?.id ?? const Uuid().v4();
 
     final variantesEntidades = _variantes.map((v) {
@@ -332,32 +517,157 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       );
     }).toList();
 
-    final imagenUrl = _imageValue;
+    String? imagenUrl = _imagenUrlCtrl.text.trim();
+    if (imagenUrl.isEmpty) imagenUrl = null;
+    String? driveFileId = widget.producto?.driveFileId;
+    String? drivePublicUrl = widget.producto?.drivePublicUrl;
+    String? imagenLocalCachePath = widget.producto?.imagenLocalCachePath;
 
-    final producto = Producto(
-      id: productoId,
-      restaurantId:
-          widget.producto?.restaurantId ?? sl<TenantContext>().restaurantId,
-      categoriaId: _categoriaId,
-      nombre: _nombreCtrl.text.trim(),
-      descripcion: _descripcionCtrl.text.trim().isEmpty
-          ? null
-          : _descripcionCtrl.text.trim(),
-      precio: double.tryParse(_precioCtrl.text.trim()) ?? 0.0,
-      imagenUrl: imagenUrl.isEmpty ? null : imagenUrl,
-      disponible: _disponible,
-      activo: _activo,
-      createdAt: widget.producto?.createdAt ?? now,
-      updatedAt: now,
-      variantes: variantesEntidades,
-    );
+    try {
+      final driveService = sl<DriveMenuConnectionService>();
+      final driveQueue = sl<DriveImageSyncQueueService>();
 
-    Navigator.of(context).pop(producto);
+      // Si la imagen proviene del selector local, se sube a Drive para
+      // garantizar acceso público sin autenticación (QR / página pública).
+      if (_selectedImageBytes != null && _selectedImageMimeType != null) {
+        final signedIn = _driveSessionReady
+            ? true
+            : await driveService.signIn();
+        _driveSessionReady = signedIn;
+        _driveOwnerEmail = driveService.currentEmail;
+        if (!signedIn) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Inicia sesión en Google para publicar la imagen del menú.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        final upload = await driveService.uploadProductImage(
+          restaurantId: restaurantId,
+          userId: userId,
+          productoId: productoId,
+          bytes: _selectedImageBytes!,
+          mimeType: _selectedImageMimeType!,
+          fileExtension: _selectedImageExtension ?? 'jpg',
+        );
+
+        if (driveFileId != null && driveFileId != upload.fileId) {
+          final deleted = await driveService.tryDeleteProductImage(driveFileId);
+          if (!deleted) {
+            await driveQueue.enqueueDeleteImage(
+              restaurantId: restaurantId,
+              fileId: driveFileId,
+            );
+          }
+        }
+
+        imagenUrl = upload.publicUrl;
+        driveFileId = upload.fileId;
+        drivePublicUrl = upload.publicUrl;
+        imagenLocalCachePath = upload.localCachePath;
+      }
+
+      // Si el admin cambia a una URL manual externa, limpiar metadatos
+      // de Drive para evitar referencias inconsistentes.
+      if (_selectedImageBytes == null &&
+          imagenUrl != null &&
+          imagenUrl.isNotEmpty &&
+          drivePublicUrl != null &&
+          imagenUrl != drivePublicUrl) {
+        final previousDriveFileId = driveFileId;
+        if (previousDriveFileId != null && previousDriveFileId.isNotEmpty) {
+          final signedIn = _driveSessionReady
+              ? true
+              : await driveService.restoreSessionSilently();
+          var deleted = false;
+          if (signedIn) {
+            deleted = await driveService.tryDeleteProductImage(
+              previousDriveFileId,
+            );
+          }
+          if (!deleted) {
+            await driveQueue.enqueueDeleteImage(
+              restaurantId: restaurantId,
+              fileId: previousDriveFileId,
+            );
+          }
+        }
+
+        driveFileId = null;
+        drivePublicUrl = null;
+        imagenLocalCachePath = null;
+      }
+
+      // Si se quitó la imagen en edición, limpiar metadatos Drive.
+      if ((imagenUrl == null || imagenUrl.isEmpty) && driveFileId != null) {
+        final signedIn = _driveSessionReady
+            ? true
+            : await driveService.restoreSessionSilently();
+        var deleted = false;
+        if (signedIn) {
+          deleted = await driveService.tryDeleteProductImage(driveFileId);
+        }
+        if (!deleted) {
+          await driveQueue.enqueueDeleteImage(
+            restaurantId: restaurantId,
+            fileId: driveFileId,
+          );
+        }
+        driveFileId = null;
+        drivePublicUrl = null;
+        imagenLocalCachePath = null;
+      }
+
+      // Drenado oportunista sin prompt interactivo.
+      await driveQueue.processPendingDeletes();
+
+      final producto = Producto(
+        id: productoId,
+        restaurantId: restaurantId,
+        categoriaId: _categoriaId,
+        nombre: _nombreCtrl.text.trim(),
+        descripcion: _descripcionCtrl.text.trim().isEmpty
+            ? null
+            : _descripcionCtrl.text.trim(),
+        precio: double.tryParse(_precioCtrl.text.trim()) ?? 0.0,
+        imagenUrl: imagenUrl,
+        driveFileId: driveFileId,
+        drivePublicUrl: drivePublicUrl,
+        imagenLocalCachePath: imagenLocalCachePath,
+        disponible: _disponible,
+        activo: _activo,
+        createdAt: widget.producto?.createdAt ?? now,
+        updatedAt: now,
+        variantes: variantesEntidades,
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop(producto);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo subir la imagen a Drive. Intenta nuevamente.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final viewport = MediaQuery.sizeOf(context);
 
     // Altura segura: clamp evita que MediaQuery devuelva 0 brevemente
     // cuando el OS dialog (FilePicker en Windows) interrumpe el render.
@@ -365,12 +675,13 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       420.0,
       700.0,
     );
+    final safeMaxWidth = (viewport.width * 0.92).clamp(280.0, 500.0);
 
     return AlertDialog(
       title: Text(_isEditing ? 'Editar Producto' : 'Nuevo Producto'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: SizedBox(
-        width: 500,
+        width: safeMaxWidth,
         height: safeMaxHeight,
         child: Stack(
           children: [
@@ -420,6 +731,8 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    _buildDriveStatus(theme),
+                    const SizedBox(height: 8),
                     _buildImagePreview(theme.colorScheme),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -435,6 +748,9 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                       onChanged: (_) {
                         if (_selectedImageData != null) {
                           _selectedImageData = null;
+                          _selectedImageBytes = null;
+                          _selectedImageMimeType = null;
+                          _selectedImageExtension = null;
                         }
                         setState(() {});
                       },
@@ -472,6 +788,9 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                           TextButton.icon(
                             onPressed: () {
                               _selectedImageData = null;
+                              _selectedImageBytes = null;
+                              _selectedImageMimeType = null;
+                              _selectedImageExtension = null;
                               _imagenUrlCtrl.clear();
                               setState(() {});
                             },
@@ -660,7 +979,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
               ),
             ),
             // ── Overlay de carga durante selección de imagen ──────
-            if (_pickingImage)
+            if (_isBusy)
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -673,7 +992,9 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                       const CircularProgressIndicator(),
                       const SizedBox(height: 16),
                       Text(
-                        'Procesando imagen...',
+                        _submitting
+                            ? 'Guardando producto y publicando imagen...'
+                            : 'Procesando imagen...',
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurface,
                         ),
@@ -688,11 +1009,11 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       actions: [
         TextButton(
-          onPressed: _pickingImage ? null : () => Navigator.of(context).pop(),
+          onPressed: _isBusy ? null : () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
         FilledButton(
-          onPressed: _pickingImage ? null : _submit,
+          onPressed: _isBusy ? null : _submit,
           child: Text(_isEditing ? 'Guardar' : 'Crear'),
         ),
       ],

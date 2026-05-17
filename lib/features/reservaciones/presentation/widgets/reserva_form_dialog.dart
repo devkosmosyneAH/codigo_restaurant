@@ -151,13 +151,15 @@ class _ReservaFormDialogState extends State<ReservaFormDialog> {
     final selectedMesaId = mesasSugeridas.any((m) => m.id == _mesaId)
         ? _mesaId
         : null;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.92).clamp(280.0, 430.0);
 
     final isEditing = widget.initialReserva != null;
 
     return AlertDialog(
       title: Text(isEditing ? 'Editar reservación' : 'Reservar $fechaStr'),
       content: SizedBox(
-        width: 430,
+        width: dialogWidth,
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,

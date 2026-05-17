@@ -421,6 +421,7 @@ class _LocalSection extends StatelessWidget {
 
         final data = snap.data ?? {};
         final supported = data['supported'] == true;
+        final supportsImportExport = data['supportsImportExport'] != false;
 
         if (!supported) {
           return _Card(
@@ -440,6 +441,9 @@ class _LocalSection extends StatelessWidget {
             .map((e) => Map<String, dynamic>.from(e as Map))
             .toList();
         final dbInfo = Map<String, dynamic>.from(data['dbInfo'] as Map? ?? {});
+        final isBrowserStorage = dbInfo['storageType'] == 'browser';
+        final importLabel = isBrowserStorage ? 'Importar JSON' : 'Importar .db';
+        final exportLabel = isBrowserStorage ? 'Exportar JSON' : 'Exportar';
         final lastBackup = stats['lastBackupTime'] as DateTime?;
         final dbSize = (dbInfo['sizeMB'] as num?)?.toDouble() ?? 0;
 
@@ -450,8 +454,10 @@ class _LocalSection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Copia archivos .db en este equipo. Expórtalos para moverlos a otra máquina.',
+                  Text(
+                    isBrowserStorage
+                        ? 'En web, los respaldos se guardan en este navegador. Puedes restaurarlos desde esta misma sección.'
+                        : 'Copia archivos .db en este equipo. Expórtalos para moverlos a otra máquina.',
                     style: TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12.5,
@@ -479,11 +485,15 @@ class _LocalSection extends StatelessWidget {
                           backgroundColor: AppColors.primary,
                         ),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: onImportar,
-                        icon: const Icon(Icons.file_upload_outlined, size: 18),
-                        label: const Text('Importar .db'),
-                      ),
+                      if (supportsImportExport)
+                        OutlinedButton.icon(
+                          onPressed: onImportar,
+                          icon: const Icon(
+                            Icons.file_upload_outlined,
+                            size: 18,
+                          ),
+                          label: Text(importLabel),
+                        ),
                       IconButton.outlined(
                         onPressed: onRefresh,
                         icon: const Icon(Icons.refresh_rounded),
@@ -581,6 +591,8 @@ class _LocalSection extends StatelessWidget {
                   child: _BackupTile(
                     backup: b,
                     dtFmt: dtFmt,
+                    showExportAction: supportsImportExport,
+                    exportActionLabel: exportLabel,
                     onExportar: () => onExportar(b['name'].toString()),
                     onRestaurar: () => onRestaurar(b),
                     onEliminar: () => onEliminar(b),
@@ -928,6 +940,8 @@ class _BackupTile extends StatelessWidget {
   const _BackupTile({
     required this.backup,
     required this.dtFmt,
+    this.showExportAction = true,
+    this.exportActionLabel = 'Exportar',
     required this.onExportar,
     required this.onRestaurar,
     required this.onEliminar,
@@ -935,6 +949,8 @@ class _BackupTile extends StatelessWidget {
 
   final Map<String, dynamic> backup;
   final DateFormat dtFmt;
+  final bool showExportAction;
+  final String exportActionLabel;
   final VoidCallback onExportar;
   final VoidCallback onRestaurar;
   final VoidCallback onEliminar;
@@ -980,41 +996,52 @@ class _BackupTile extends StatelessWidget {
             if (value == 'restaurar') onRestaurar();
             if (value == 'eliminar') onEliminar();
           },
-          itemBuilder: (_) => [
-            const PopupMenuItem(
-              value: 'exportar',
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: Icon(Icons.file_download_outlined),
-                title: Text('Exportar'),
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'restaurar',
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: Icon(Icons.settings_backup_restore_rounded),
-                title: Text('Restaurar'),
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'eliminar',
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                leading: Icon(
-                  Icons.delete_outline_rounded,
-                  color: AppColors.error,
+          itemBuilder: (_) {
+            final items = <PopupMenuEntry<String>>[];
+
+            if (showExportAction) {
+              items.add(
+                PopupMenuItem<String>(
+                  value: 'exportar',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    leading: const Icon(Icons.file_download_outlined),
+                    title: Text(exportActionLabel),
+                  ),
                 ),
-                title: Text(
-                  'Eliminar',
-                  style: TextStyle(color: AppColors.error),
+              );
+            }
+
+            items.addAll([
+              const PopupMenuItem(
+                value: 'restaurar',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: Icon(Icons.settings_backup_restore_rounded),
+                  title: Text('Restaurar'),
                 ),
               ),
-            ),
-          ],
+              const PopupMenuItem(
+                value: 'eliminar',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppColors.error,
+                  ),
+                  title: Text(
+                    'Eliminar',
+                    style: TextStyle(color: AppColors.error),
+                  ),
+                ),
+              ),
+            ]);
+
+            return items;
+          },
         ),
       ),
     );

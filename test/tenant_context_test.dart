@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:restaurant_app/core/constants/app_constants.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/services/session_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -10,6 +11,11 @@ void main() {
   group('TenantContext', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
+      SessionService.overrideSensitiveStore(InMemorySensitiveSessionStore());
+    });
+
+    tearDown(() {
+      SessionService.resetSensitiveStore();
     });
 
     test('uses default restaurant before a session is set', () {

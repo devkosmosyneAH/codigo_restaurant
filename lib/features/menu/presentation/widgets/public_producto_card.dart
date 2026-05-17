@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:restaurant_app/core/constants/app_constants.dart';
 import 'package:restaurant_app/core/theme/app_colors.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
+import 'package:restaurant_app/features/menu/presentation/widgets/menu_image_loader.dart';
 
 /// Tarjeta de producto para el menu publico.
 class PublicProductoCard extends StatefulWidget {
@@ -35,6 +34,8 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final tieneVariantes = widget.producto.tieneVariantes;
+    final precio = widget.producto.precioReferencial;
     final animationsDisabled = MediaQuery.disableAnimationsOf(context);
     final scale = animationsDisabled
         ? 1.0
@@ -80,7 +81,17 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(child: _buildImage(widget.producto.imagenUrl, cs)),
+                  Expanded(
+                    child: MenuImageLoader(
+                      localCachePath: widget.producto.imagenLocalCachePath,
+                      primaryImageValue: widget.producto.drivePublicUrl,
+                      fallbackImageValue: widget.producto.imagenUrl,
+                      fit: BoxFit.cover,
+                      cacheWidth: 720,
+                      filterQuality: FilterQuality.low,
+                      placeholder: _placeholder(cs),
+                    ),
+                  ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 11, 12, 10),
                     child: Column(
@@ -109,6 +120,19 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
                             ),
                           ),
                         ],
+                        if (tieneVariantes) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            _buildVariantesSummary(widget.producto),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                              height: 1.25,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 9),
                         Row(
                           children: [
@@ -126,7 +150,7 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
                                     vertical: 5,
                                   ),
                                   child: Text(
-                                    '${AppConstants.currencySymbol}${widget.producto.precio.toStringAsFixed(2)}',
+                                    '${tieneVariantes ? 'Desde ' : ''}${AppConstants.currencySymbol}${precio.toStringAsFixed(2)}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: theme.textTheme.titleSmall?.copyWith(
@@ -193,58 +217,6 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
     );
   }
 
-  Widget _buildImage(String? imageValue, ColorScheme cs) {
-    final raw = imageValue?.trim();
-    if (raw == null || raw.isEmpty) return _placeholder(cs);
-
-    if (raw.startsWith('data:image')) {
-      final commaIndex = raw.indexOf(',');
-      if (commaIndex == -1) return _placeholder(cs);
-
-      try {
-        return Image.memory(
-          base64Decode(raw.substring(commaIndex + 1)),
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          cacheWidth: 720,
-          filterQuality: FilterQuality.low,
-          frameBuilder: _fadeFrameBuilder,
-          errorBuilder: (_, __, ___) => _placeholder(cs),
-        );
-      } catch (_) {
-        return _placeholder(cs);
-      }
-    }
-
-    if (raw.startsWith('http://') || raw.startsWith('https://')) {
-      return Image.network(
-        raw,
-        fit: BoxFit.cover,
-        cacheWidth: 720,
-        filterQuality: FilterQuality.low,
-        frameBuilder: _fadeFrameBuilder,
-        loadingBuilder: (context, child, loadingProgress) {
-          if (loadingProgress == null) return child;
-          return _placeholder(cs);
-        },
-        errorBuilder: (_, __, ___) => _placeholder(cs),
-      );
-    }
-
-    if (raw.startsWith('assets/')) {
-      return Image.asset(
-        raw,
-        fit: BoxFit.cover,
-        cacheWidth: 720,
-        filterQuality: FilterQuality.low,
-        frameBuilder: _fadeFrameBuilder,
-        errorBuilder: (_, __, ___) => _placeholder(cs),
-      );
-    }
-
-    return _placeholder(cs);
-  }
-
   Widget _placeholder(ColorScheme cs) {
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -265,18 +237,15 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
     );
   }
 
-  Widget _fadeFrameBuilder(
-    BuildContext context,
-    Widget child,
-    int? frame,
-    bool wasSynchronouslyLoaded,
-  ) {
-    if (wasSynchronouslyLoaded) return child;
-    return AnimatedOpacity(
-      opacity: frame == null ? 0 : 1,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      child: child,
-    );
+  String _buildVariantesSummary(Producto producto) {
+    final activas = producto.variantes.where((v) => v.activo).toList();
+    if (activas.isEmpty) {
+      return 'Opciones disponibles';
+    }
+
+    final preview = activas.take(2).map((v) => v.nombre.trim()).join(' · ');
+    final restantes = activas.length - 2;
+    final suffix = restantes > 0 ? ' +$restantes' : '';
+    return '${activas.length} opciones: $preview$suffix';
   }
 }

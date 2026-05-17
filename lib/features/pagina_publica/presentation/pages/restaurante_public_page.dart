@@ -10,6 +10,7 @@ import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/core/theme/app_colors.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
+import 'package:restaurant_app/features/menu/presentation/widgets/menu_image_loader.dart';
 import 'package:restaurant_app/features/pagina_publica/domain/entities/public_config.dart';
 import 'package:restaurant_app/features/pagina_publica/presentation/providers/public_config_provider.dart';
 
@@ -25,13 +26,18 @@ class RestaurantePublicPage extends ConsumerStatefulWidget {
 class _RestaurantePublicPageState extends ConsumerState<RestaurantePublicPage> {
   static const Color _teal = AppColors.primary;
   static const Color _cream = Color(0xFFF5F0EB);
+  bool _menuPreviewLoadRequested = false;
 
   @override
   void initState() {
     super.initState();
-    // Carga el menú solo una vez al abrir la página pública,
-    // evitando el loop isLoading:true que ocultaba los productos.
+  }
+
+  void _requestMenuPreviewLoadIfNeeded({required bool showMenu}) {
+    if (!showMenu || _menuPreviewLoadRequested) return;
+    _menuPreviewLoadRequested = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(menuProvider.notifier).loadMenu();
     });
   }
@@ -49,6 +55,7 @@ class _RestaurantePublicPageState extends ConsumerState<RestaurantePublicPage> {
 
     final config =
         state.config ?? PublicConfig.defaults(sl<TenantContext>().restaurantId);
+    _requestMenuPreviewLoadIfNeeded(showMenu: config.mostrarBotonMenu);
 
     return Scaffold(
       backgroundColor: _cream,
@@ -211,11 +218,15 @@ class _HeroSliver extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
+    final viewport = MediaQuery.sizeOf(context);
+    final width = viewport.width;
+    final height = viewport.height;
+    final expandedHeightMobile = (height * 0.64).clamp(430.0, 540.0);
+    final expandedHeightTinyMobile = (height * 0.62).clamp(410.0, 500.0);
     final expandedHeight = width < 340
-        ? 390.0
+        ? expandedHeightTinyMobile
         : width < 600
-        ? 430.0
+        ? expandedHeightMobile
         : width >= 1600
         ? 590.0
         : width >= 1440
@@ -387,21 +398,71 @@ class _HeroContent extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
         final isTiny = width < 340;
         final isCompact = width < 600;
+        final isHeightTight = height < 460;
         final isWideDesktop = width >= 1440;
         final logoSize = isTiny
-            ? 70.0
+            ? 66.0
+            : isCompact
+            ? (isHeightTight ? 78.0 : 84.0)
             : isWideDesktop
             ? 116.0
             : 96.0;
         final titleSize = isTiny
-            ? 27.0
+            ? 25.0
             : isCompact
-            ? 34.0
+            ? (isHeightTight ? 30.0 : 32.0)
             : isWideDesktop
             ? 54.0
             : 46.0;
+        final topPadding = isTiny
+            ? 10.0
+            : isCompact
+            ? (isHeightTight ? 10.0 : 12.0)
+            : isWideDesktop
+            ? 22.0
+            : 16.0;
+        final bottomPadding = isTiny
+            ? 16.0
+            : isCompact
+            ? (isHeightTight ? 14.0 : 18.0)
+            : isWideDesktop
+            ? 44.0
+            : 32.0;
+        final afterLogoGap = isWideDesktop
+            ? 22.0
+            : isCompact
+            ? 12.0
+            : 18.0;
+        final afterBadgeGap = isWideDesktop
+            ? 16.0
+            : isCompact
+            ? 10.0
+            : 12.0;
+        final afterTitleGap = isWideDesktop
+            ? 20.0
+            : isCompact
+            ? 12.0
+            : 16.0;
+        final afterDividerGap = isWideDesktop
+            ? 20.0
+            : isCompact
+            ? 12.0
+            : 16.0;
+        final afterSloganGap = isWideDesktop
+            ? 20.0
+            : isCompact
+            ? 12.0
+            : 16.0;
+        final discoverTopGap = isTiny
+            ? 12.0
+            : isCompact
+            ? 14.0
+            : isWideDesktop
+            ? 30.0
+            : 24.0;
         final displayName = config.nombreNegocio.isNotEmpty
             ? config.nombreNegocio
             : AppConstants.appName;
@@ -414,17 +475,13 @@ class _HeroContent extends StatelessWidget {
                   : isWideDesktop
                   ? 56
                   : 32,
-              isWideDesktop ? 22 : 16,
+              topPadding,
               isCompact
                   ? 18
                   : isWideDesktop
                   ? 56
                   : 32,
-              isTiny
-                  ? 22
-                  : isWideDesktop
-                  ? 44
-                  : 32,
+              bottomPadding,
             ),
             child: SingleChildScrollView(
               physics: const NeverScrollableScrollPhysics(),
@@ -462,7 +519,7 @@ class _HeroContent extends StatelessWidget {
                       ),
                     ),
                   ),
-                  SizedBox(height: isWideDesktop ? 22 : 18),
+                  SizedBox(height: afterLogoGap),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -485,7 +542,7 @@ class _HeroContent extends StatelessWidget {
                       ),
                     ),
                   ),
-                  SizedBox(height: isWideDesktop ? 16 : 12),
+                  SizedBox(height: afterBadgeGap),
                   Text(
                     displayName,
                     textAlign: TextAlign.center,
@@ -499,7 +556,7 @@ class _HeroContent extends StatelessWidget {
                       height: 1.1,
                     ),
                   ),
-                  SizedBox(height: isWideDesktop ? 20 : 16),
+                  SizedBox(height: afterTitleGap),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -522,7 +579,7 @@ class _HeroContent extends StatelessWidget {
                       ),
                     ],
                   ),
-                  SizedBox(height: isWideDesktop ? 20 : 16),
+                  SizedBox(height: afterDividerGap),
                   Text(
                     config.slogan,
                     textAlign: TextAlign.center,
@@ -538,7 +595,7 @@ class _HeroContent extends StatelessWidget {
                       letterSpacing: 0.3,
                     ),
                   ),
-                  SizedBox(height: isWideDesktop ? 20 : 16),
+                  SizedBox(height: afterSloganGap),
                   Wrap(
                     alignment: WrapAlignment.center,
                     spacing: isWideDesktop ? 10 : 8,
@@ -560,13 +617,7 @@ class _HeroContent extends StatelessWidget {
                       ),
                     ],
                   ),
-                  SizedBox(
-                    height: isTiny
-                        ? 16
-                        : isWideDesktop
-                        ? 30
-                        : 24,
-                  ),
+                  SizedBox(height: discoverTopGap),
                   Align(
                     alignment: Alignment.center,
                     child: Column(
@@ -1562,7 +1613,6 @@ class _ProductoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasImage = (producto.imagenUrl ?? '').toString().isNotEmpty;
     final imgH = (cardWidth * 0.69).roundToDouble();
 
     return Container(
@@ -1589,15 +1639,17 @@ class _ProductoCard extends StatelessWidget {
               topLeft: Radius.circular(16),
               topRight: Radius.circular(16),
             ),
-            child: hasImage
-                ? Image.network(
-                    producto.imagenUrl as String,
-                    height: imgH,
-                    width: cardWidth,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _placeholder(),
-                  )
-                : _placeholder(),
+            child: MenuImageLoader(
+              localCachePath: producto.imagenLocalCachePath as String?,
+              primaryImageValue: producto.drivePublicUrl as String?,
+              fallbackImageValue: producto.imagenUrl as String?,
+              width: cardWidth,
+              height: imgH,
+              fit: BoxFit.cover,
+              cacheWidth: 640,
+              filterQuality: FilterQuality.low,
+              placeholder: _placeholder(),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),

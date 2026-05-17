@@ -12,14 +12,10 @@ import 'package:restaurant_app/features/pedidos/domain/entities/pedido.dart';
 class CrearPedidoDialog extends ConsumerStatefulWidget {
   final String restaurantId;
 
-  const CrearPedidoDialog({
-    super.key,
-    required this.restaurantId,
-  });
+  const CrearPedidoDialog({super.key, required this.restaurantId});
 
   @override
-  ConsumerState<CrearPedidoDialog> createState() =>
-      _CrearPedidoDialogState();
+  ConsumerState<CrearPedidoDialog> createState() => _CrearPedidoDialogState();
 }
 
 class _CrearPedidoDialogState extends ConsumerState<CrearPedidoDialog> {
@@ -39,6 +35,8 @@ class _CrearPedidoDialogState extends ConsumerState<CrearPedidoDialog> {
     final mesasDisponibles = mesasState.mesas
         .where((m) => m.estado == EstadoMesa.libre)
         .toList();
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = (viewport.width * 0.92).clamp(280.0, 400.0);
 
     return AlertDialog(
       title: const Row(
@@ -49,7 +47,7 @@ class _CrearPedidoDialogState extends ConsumerState<CrearPedidoDialog> {
         ],
       ),
       content: SizedBox(
-        width: 400,
+        width: dialogWidth,
         child: Form(
           key: _formKey,
           child: Column(
@@ -104,18 +102,24 @@ class _CrearPedidoDialogState extends ConsumerState<CrearPedidoDialog> {
                     color: AppColors.warning.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: AppColors.warning.withValues(alpha: 0.3)),
+                      color: AppColors.warning.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: const Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded,
-                          color: AppColors.warning, size: 20),
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppColors.warning,
+                        size: 20,
+                      ),
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           'No hay mesas libres disponibles',
                           style: TextStyle(
-                              color: AppColors.warning, fontSize: 13),
+                            color: AppColors.warning,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ],

@@ -1,16 +1,39 @@
 # restaurant_app
 
-A new Flutter project.
+Aplicación Flutter para gestión de restaurante con arquitectura híbrida:
 
-## Getting Started
+- SQLite local como fuente de verdad offline.
+- Firestore como sincronización multi-dispositivo.
 
-This project is a starting point for a Flutter application.
+## Estrategia de Sync por Plataforma
 
-A few resources to get you started if this is your first Flutter project:
+Actualmente la sincronización cloud está habilitada donde Firebase está
+configurado en `firebase_options.dart`.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- Plataformas soportadas por Firebase config: sincronizan SQLite <-> Firestore.
+- Plataformas sin Firebase config: corren en modo local-only (SQLite),
+  sin sync cloud.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Esto evita estados "a medias" en preproducción.
+
+Para habilitar más plataformas (Android/iOS/desktop), generar configuración:
+
+```bash
+flutterfire configure
+```
+
+## Reglas de Firestore
+
+Este repo versiona reglas en `firestore.rules` y referencia en `firebase.json`.
+
+Despliegue:
+
+```bash
+npx firebase-tools deploy --only firestore:rules --project <tu-project-id>
+```
+
+Si no has autenticado CLI aún:
+
+```bash
+npx firebase-tools login
+```

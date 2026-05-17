@@ -43,11 +43,17 @@ class DriveBackupState {
 // ── Notifier ──────────────────────────────────────────────────────────────────
 
 class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
-  DriveBackupNotifier() : super(const DriveBackupState()) {
-    _checkSignIn();
+  DriveBackupNotifier({
+    DriveBackupService? service,
+    bool autoCheckSignIn = true,
+  }) : _service = service ?? DriveBackupService.instance,
+       super(const DriveBackupState()) {
+    if (autoCheckSignIn) {
+      _checkSignIn();
+    }
   }
 
-  final _service = DriveBackupService.instance;
+  final DriveBackupService _service;
 
   Future<void> _checkSignIn() async {
     final account = await _service.signInSilently();

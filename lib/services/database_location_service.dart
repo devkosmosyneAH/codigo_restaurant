@@ -8,6 +8,12 @@ import 'package:restaurant_app/core/constants/app_constants.dart';
 /// según el sistema operativo y el contexto de ejecución (desarrollo vs ejecutable)
 class DatabaseLocationService {
   static const String _databaseName = AppConstants.databaseName;
+  static String? _overrideDatabasePath;
+
+  @visibleForTesting
+  static void setDatabasePathOverride(String? dbPath) {
+    _overrideDatabasePath = dbPath;
+  }
 
   /// Obtener una ruta segura y escribible para la base de datos.
   ///
@@ -15,6 +21,10 @@ class DatabaseLocationService {
   /// siempre el directorio estándar de `sqflite`, evitando escribir junto al
   /// ejecutable donde suele haber restricciones de permisos.
   static Future<String> getDatabasePath() async {
+    if (_overrideDatabasePath != null) {
+      return _overrideDatabasePath!;
+    }
+
     if (kIsWeb) {
       throw UnsupportedError(
         'La base de datos SQLite no es compatible con Flutter Web',

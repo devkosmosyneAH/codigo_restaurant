@@ -15,7 +15,11 @@ class DatabaseTables {
     _createMesasTable,
     _createCategoriasTable,
     _createProductosTable,
+    _createProductosPublicLookupIndex,
+    _createDriveConnectionsTable,
+    _createDriveConnectionsRestaurantUniqueIndex,
     _createVariantesTable,
+    _createVariantesProductoLookupIndex,
     _createPedidosTable,
     _createPedidoItemsTable,
     _createVentasTable,
@@ -27,6 +31,8 @@ class DatabaseTables {
     _createIngredientesTable,
     _createProductoIngredientesTable,
     _createSyncLogTable,
+    _createSyncAuditLogTable,
+    _createSecurityAuditLogTable,
     _createSriSecuencialesTable,
     _createSriFiscalConfigsTable,
     _createSriCertificateRefsTable,
@@ -44,6 +50,11 @@ class DatabaseTables {
     _createClientesSearchIndex,
     _createVentasClienteIdentificacionIndex,
     _createVentasIdentificacionClienteIndex,
+    _createSyncLogPerformanceIndex,
+    _createSyncAuditLogCreatedAtIndex,
+    _createSyncAuditLogLookupIndex,
+    _createSecurityAuditLogCreatedAtIndex,
+    _createSecurityAuditLogEventIndex,
   ];
 
   // ── Restaurantes ───────────────────────────────────────────────────
@@ -122,6 +133,9 @@ class DatabaseTables {
       descripcion TEXT,
       precio REAL NOT NULL,
       imagen_url TEXT,
+      drive_file_id TEXT,
+      drive_public_url TEXT,
+      imagen_local_cache_path TEXT,
       disponible INTEGER NOT NULL DEFAULT 1,
       activo INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -129,6 +143,32 @@ class DatabaseTables {
       FOREIGN KEY (restaurant_id) REFERENCES restaurantes(id),
       FOREIGN KEY (categoria_id) REFERENCES categorias(id)
     )
+  ''';
+
+  static const String _createProductosPublicLookupIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_productos_restaurant_public_lookup
+    ON productos (restaurant_id, activo, disponible, categoria_id, nombre COLLATE NOCASE)
+  ''';
+
+  // ── Conexión Drive por Tenant ───────────────────────────────────
+  static const String _createDriveConnectionsTable = '''
+    CREATE TABLE IF NOT EXISTS drive_connections (
+      id TEXT PRIMARY KEY,
+      restaurant_id TEXT NOT NULL,
+      folder_id TEXT NOT NULL,
+      folder_name TEXT NOT NULL,
+      owner_email TEXT,
+      public_share_enabled INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (restaurant_id) REFERENCES restaurantes(id)
+    )
+  ''';
+
+  static const String _createDriveConnectionsRestaurantUniqueIndex = '''
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_drive_connections_restaurant
+    ON drive_connections (restaurant_id)
   ''';
 
   // ── Variantes de Producto ──────────────────────────────────────────
@@ -143,6 +183,11 @@ class DatabaseTables {
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (producto_id) REFERENCES productos(id)
     )
+  ''';
+
+  static const String _createVariantesProductoLookupIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_variantes_producto_activo_precio
+    ON variantes (producto_id, activo, precio)
   ''';
 
   // ── Pedidos ────────────────────────────────────────────────────────
@@ -212,6 +257,7 @@ class DatabaseTables {
       sri_xml_hash TEXT,
       sri_ride_path TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       source_cotizacion_id TEXT,
       FOREIGN KEY (restaurant_id) REFERENCES restaurantes(id),
       FOREIGN KEY (cajero_id) REFERENCES usuarios(id),
@@ -325,6 +371,7 @@ class DatabaseTables {
       color_manteleria TEXT,
       precio_estimado REAL,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (restaurant_id) REFERENCES restaurantes(id),
       FOREIGN KEY (mesa_id) REFERENCES mesas(id),
       FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente),
@@ -592,5 +639,55 @@ class DatabaseTables {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
+  ''';
+
+  static const String _createSyncLogPerformanceIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_sync_log_pending_lookup
+    ON sync_log (sincronizado, tabla, intentos, created_at)
+  ''';
+
+  static const String _createSyncAuditLogTable = '''
+    CREATE TABLE IF NOT EXISTS sync_audit_log (
+      id TEXT PRIMARY KEY,
+      sync_record_id TEXT,
+      direction TEXT NOT NULL,
+      status TEXT NOT NULL,
+      tabla TEXT NOT NULL,
+      registro_id TEXT NOT NULL,
+      restaurant_id TEXT NOT NULL,
+      detail TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  ''';
+
+  static const String _createSyncAuditLogCreatedAtIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_sync_audit_log_created_at
+    ON sync_audit_log (created_at)
+  ''';
+
+  static const String _createSyncAuditLogLookupIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_sync_audit_log_lookup
+    ON sync_audit_log (direction, status, tabla, restaurant_id, created_at)
+  ''';
+
+  static const String _createSecurityAuditLogTable = '''
+    CREATE TABLE IF NOT EXISTS security_audit_log (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      user_id TEXT,
+      restaurant_id TEXT,
+      detail TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  ''';
+
+  static const String _createSecurityAuditLogCreatedAtIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_security_audit_log_created_at
+    ON security_audit_log (created_at)
+  ''';
+
+  static const String _createSecurityAuditLogEventIndex = '''
+    CREATE INDEX IF NOT EXISTS idx_security_audit_log_event
+    ON security_audit_log (event_type, created_at)
   ''';
 }

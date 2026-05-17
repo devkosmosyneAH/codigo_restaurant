@@ -60,13 +60,17 @@ class _MesaFormDialogState extends State<MesaFormDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogMaxWidth = (viewport.width * 0.92).clamp(280.0, 420.0);
+    final dialogMaxHeight = (viewport.height * 0.80).clamp(360.0, 760.0);
+
     return AlertDialog(
       title: Text(isEditing ? 'Editar Mesa' : 'Nueva Mesa'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: 420,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.80,
+          maxWidth: dialogMaxWidth,
+          maxHeight: dialogMaxHeight,
         ),
         child: SingleChildScrollView(
           child: Form(

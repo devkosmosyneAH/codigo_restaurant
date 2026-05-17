@@ -1,9 +1,8 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
+import 'package:restaurant_app/features/menu/presentation/widgets/menu_image_loader.dart';
 
 /// Tarjeta que muestra un producto del menú.
 ///
@@ -47,7 +46,15 @@ class ProductoCard extends ConsumerWidget {
               height: 132,
               width: double.infinity,
               color: colorScheme.surfaceContainerHighest,
-              child: _buildImage(producto.imagenUrl, colorScheme),
+              child: MenuImageLoader(
+                localCachePath: producto.imagenLocalCachePath,
+                primaryImageValue: producto.drivePublicUrl,
+                fallbackImageValue: producto.imagenUrl,
+                fit: BoxFit.cover,
+                cacheWidth: 720,
+                filterQuality: FilterQuality.low,
+                placeholder: _placeholder(colorScheme),
+              ),
             ),
             Expanded(
               child: Padding(
@@ -182,51 +189,6 @@ class ProductoCard extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Widget _buildImage(String? imageValue, ColorScheme colorScheme) {
-    final raw = imageValue?.trim();
-    if (raw == null || raw.isEmpty) return _placeholder(colorScheme);
-
-    if (raw.startsWith('data:image')) {
-      final commaIndex = raw.indexOf(',');
-      if (commaIndex == -1) return _placeholder(colorScheme);
-
-      try {
-        return Image.memory(
-          base64Decode(raw.substring(commaIndex + 1)),
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          cacheWidth: 720,
-          filterQuality: FilterQuality.low,
-          errorBuilder: (_, __, ___) => _placeholder(colorScheme),
-        );
-      } catch (_) {
-        return _placeholder(colorScheme);
-      }
-    }
-
-    if (raw.startsWith('http://') || raw.startsWith('https://')) {
-      return Image.network(
-        raw,
-        fit: BoxFit.cover,
-        cacheWidth: 720,
-        filterQuality: FilterQuality.low,
-        errorBuilder: (_, __, ___) => _placeholder(colorScheme),
-      );
-    }
-
-    if (raw.startsWith('assets/')) {
-      return Image.asset(
-        raw,
-        fit: BoxFit.cover,
-        cacheWidth: 720,
-        filterQuality: FilterQuality.low,
-        errorBuilder: (_, __, ___) => _placeholder(colorScheme),
-      );
-    }
-
-    return _placeholder(colorScheme);
   }
 
   Widget _placeholder(ColorScheme colorScheme) {

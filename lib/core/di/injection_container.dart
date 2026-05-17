@@ -1,6 +1,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/sync/sync_cloud_service.dart';
+import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
 import 'package:restaurant_app/core/sync/sync_manager.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
@@ -28,8 +29,11 @@ import 'package:restaurant_app/features/pedidos/domain/usecases/pedido_usecases.
 
 // ── Menú ─────────────────────────────────────────────────────────────
 import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasource.dart';
+import 'package:restaurant_app/features/menu/data/datasources/drive_connection_local_datasource.dart';
 import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasource_impl.dart';
 import 'package:restaurant_app/features/menu/data/repositories/menu_repository_impl.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/menu/domain/repositories/menu_repository.dart';
 import 'package:restaurant_app/features/menu/domain/usecases/menu_usecases.dart';
 
@@ -102,6 +106,14 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<SyncManager>(() => SyncManager());
   sl.registerLazySingleton<SyncCloudService>(() => SyncCloudService());
   sl.registerLazySingleton<TenantContext>(() => TenantContext());
+  sl.registerLazySingleton<HybridSyncOrchestrator>(
+    () => HybridSyncOrchestrator(
+      syncManager: sl(),
+      cloudService: sl(),
+      dbHelper: sl(),
+      tenantContext: sl(),
+    ),
+  );
   sl.registerLazySingleton<ActivationChangeNotifier>(
     () => ActivationChangeNotifier(),
   );
@@ -194,6 +206,16 @@ void _initPedidos() {
 
 /// Registra las dependencias del módulo de Menú.
 void _initMenu() {
+  sl.registerLazySingleton<DriveConnectionLocalDatasource>(
+    () => DriveConnectionLocalDatasource(dbHelper: sl()),
+  );
+  sl.registerLazySingleton<DriveMenuConnectionService>(
+    () => DriveMenuConnectionService(datasource: sl()),
+  );
+  sl.registerLazySingleton<DriveImageSyncQueueService>(
+    () => DriveImageSyncQueueService(syncManager: sl(), driveService: sl()),
+  );
+
   // DataSources
   sl.registerLazySingleton<MenuLocalDataSource>(
     () => MenuLocalDataSourceImpl(

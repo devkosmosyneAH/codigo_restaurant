@@ -479,6 +479,8 @@ class _CobroDialogState extends ConsumerState<CobroDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final contentWidth = (viewport.width * 0.92).clamp(280.0, 520.0);
 
     return AlertDialog(
       title: Row(
@@ -495,7 +497,7 @@ class _CobroDialogState extends ConsumerState<CobroDialog> {
         ],
       ),
       content: SizedBox(
-        width: 520,
+        width: contentWidth,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

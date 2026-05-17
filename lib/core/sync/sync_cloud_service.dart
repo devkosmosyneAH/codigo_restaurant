@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:restaurant_app/core/constants/app_constants.dart';
 import 'package:restaurant_app/core/sync/sync_record.dart';
+import 'package:restaurant_app/firebase_options.dart';
 
 abstract class SyncCloudBackend {
   Future<void> ensureAvailable();
@@ -39,7 +40,17 @@ class FirebaseSyncCloudBackend implements SyncCloudBackend {
   @override
   Future<void> ensureAvailable() async {
     if (Firebase.apps.isNotEmpty) return;
-    await Firebase.initializeApp();
+
+    if (!DefaultFirebaseOptions.isSupportedPlatform) {
+      throw UnsupportedError(
+        'Firebase no esta configurado para esta plataforma. '
+        'Ejecuta: flutterfire configure para habilitarla.',
+      );
+    }
+
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   }
 
   @override
@@ -86,13 +97,26 @@ class FirebaseSyncCloudBackend implements SyncCloudBackend {
 
 /// Servicio para enviar operaciones del sync_log a Firestore.
 class SyncCloudService {
-  SyncCloudService({SyncCloudBackend? backend})
-    : _backend = backend ?? FirebaseSyncCloudBackend();
+  SyncCloudService({SyncCloudBackend? backend, bool? enforcePlatformSupport})
+    : _backend = backend ?? FirebaseSyncCloudBackend(),
+      _enforcePlatformSupport = enforcePlatformSupport ?? backend == null;
 
   final SyncCloudBackend _backend;
+  final bool _enforcePlatformSupport;
+
+  bool get isCloudSyncSupportedPlatform =>
+      !_enforcePlatformSupport || DefaultFirebaseOptions.isSupportedPlatform;
+
+  String get unsupportedPlatformMessage =>
+      'Sincronizacion en nube deshabilitada en esta plataforma. '
+      'Modo local activo (SQLite sin sync cloud).';
 
   /// Valida que Firebase esté inicializado y disponible.
   Future<void> ensureAvailable() async {
+    if (!isCloudSyncSupportedPlatform) {
+      throw UnsupportedError(unsupportedPlatformMessage);
+    }
+
     try {
       await _backend.ensureAvailable();
     } catch (e) {
@@ -142,8 +166,13 @@ class SyncCloudService {
   }
 
   Map<String, dynamic> _buildPayload(SyncRecord record) {
+    final cleanData = <String, dynamic>{...?record.datos};
+    if (record.tabla == 'clientes') {
+      cleanData.remove('id_cliente');
+    }
+
     final payload = <String, dynamic>{
-      ...?record.datos,
+      ...cleanData,
       '_sync': {
         'record_id': record.id,
         'operation': record.operacion.name,
@@ -153,7 +182,7 @@ class SyncCloudService {
       },
     };
 
-    if (record.datos == null || record.datos!.isEmpty) {
+    if (cleanData.isEmpty) {
       payload['id'] = record.registroId;
     }
 

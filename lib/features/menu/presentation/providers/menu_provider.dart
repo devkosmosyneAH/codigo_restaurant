@@ -72,6 +72,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
   final CreateVariante _createVariante;
   final UpdateVariante _updateVariante;
   final DeleteVariante _deleteVariante;
+  Future<void>? _loadMenuInFlight;
 
   MenuNotifier({
     required GetCategorias getCategorias,
@@ -105,6 +106,19 @@ class MenuNotifier extends StateNotifier<MenuState> {
   // ── Carga inicial ─────────────────────────────────────────────
 
   Future<void> loadMenu([String? restaurantId, bool silent = false]) async {
+    final inFlight = _loadMenuInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+
+    final loadFuture = _loadMenuInternal(restaurantId, silent);
+    _loadMenuInFlight = loadFuture.whenComplete(() {
+      _loadMenuInFlight = null;
+    });
+    return _loadMenuInFlight!;
+  }
+
+  Future<void> _loadMenuInternal(String? restaurantId, bool silent) async {
     if (!silent) {
       state = state.copyWith(isLoading: true, clearError: true);
     } else {
@@ -113,11 +127,10 @@ class MenuNotifier extends StateNotifier<MenuState> {
     final rid = restaurantId ?? sl<TenantContext>().restaurantId;
 
     final catResult = await _getCategorias(rid);
-    catResult.fold(
-      (failure) => state = state.copyWith(
-        isLoading: false,
-        errorMessage: failure.message,
-      ),
+    await catResult.fold(
+      (failure) async {
+        state = state.copyWith(isLoading: false, errorMessage: failure.message);
+      },
       (cats) async {
         final prodResult = await _getProductos(rid);
         prodResult.fold(

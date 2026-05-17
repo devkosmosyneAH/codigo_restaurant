@@ -106,14 +106,17 @@ class _UsuarioFormDialogState extends ConsumerState<UsuarioFormDialog> {
       if (rol != RolUsuario.administrador) return true;
       return !adminBloqueado;
     }).toList();
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogMaxWidth = (viewport.width * 0.92).clamp(280.0, 420.0);
+    final dialogMaxHeight = (viewport.height * 0.80).clamp(380.0, 700.0);
 
     return AlertDialog(
       title: Text(_isEditing ? 'Editar usuario' : 'Nuevo usuario'),
       contentPadding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       content: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: 420,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+          maxWidth: dialogMaxWidth,
+          maxHeight: dialogMaxHeight,
         ),
         child: SingleChildScrollView(
           child: Form(

@@ -17,6 +17,16 @@ void main() {
     setUp(() {
       dbHelper = _MockDatabaseHelper();
       manager = SyncManager(dbHelper: dbHelper);
+
+      when(
+        () => dbHelper.query(
+          any(),
+          where: any(named: 'where'),
+          whereArgs: any(named: 'whereArgs'),
+          orderBy: any(named: 'orderBy'),
+          limit: any(named: 'limit'),
+        ),
+      ).thenAnswer((_) async => []);
     });
 
     test('registrarOperacion persists restaurant_id in sync_log', () async {
@@ -42,7 +52,12 @@ void main() {
       expect(insertedData!['registro_id'], 'pedido_001');
       expect(insertedData!['operacion'], 'insert');
       expect(insertedData!['restaurant_id'], 'restaurant_002');
-      expect(jsonDecode(insertedData!['datos'] as String), {'total': 25.5});
+      final payload =
+          jsonDecode(insertedData!['datos'] as String) as Map<String, dynamic>;
+      expect(payload, containsPair('total', 25.5));
+      expect(payload, containsPair('restaurant_id', 'restaurant_002'));
+      expect(payload, containsPair('id', 'pedido_001'));
+      expect(payload.containsKey('updated_at'), isTrue);
       expect(insertedData!['sincronizado'], 0);
     });
 
@@ -87,5 +102,78 @@ void main() {
         ),
       ).called(1);
     });
+
+    test(
+      'obtenerPendientesParaEnvio incluye registros con max retries cuando forzar=true',
+      () async {
+        when(
+          () => dbHelper.query(
+            'sync_log',
+            where: any(named: 'where'),
+            whereArgs: any(named: 'whereArgs'),
+            orderBy: any(named: 'orderBy'),
+            limit: any(named: 'limit'),
+          ),
+        ).thenAnswer(
+          (_) async => [
+            {
+              'id': 'sync_critical_001',
+              'tabla': 'ventas',
+              'registro_id': 'venta_001',
+              'operacion': 'update',
+              'datos': '{"total":42.0}',
+              'sincronizado': 0,
+              'intentos': 5,
+              'created_at': '2026-04-30T10:00:00.000',
+              'updated_at': '2026-04-30T10:05:00.000',
+              'restaurant_id': 'restaurant_002',
+            },
+          ],
+        );
+
+        final due = await manager.obtenerPendientesParaEnvio(
+          forzar: true,
+          maxRetries: 3,
+        );
+
+        expect(due, hasLength(1));
+        expect(due.single.id, 'sync_critical_001');
+      },
+    );
+
+    test(
+      'registrarOperacion de clientes no incluye id_cliente en payload',
+      () async {
+        Map<String, dynamic>? insertedData;
+        when(() => dbHelper.insert(any(), any())).thenAnswer((
+          invocation,
+        ) async {
+          insertedData = Map<String, dynamic>.from(
+            invocation.positionalArguments[1] as Map,
+          );
+          return 1;
+        });
+
+        await manager.registrarOperacion(
+          tabla: 'clientes',
+          registroId: 'restaurant_002:0102030405',
+          operacion: SyncOperation.insert,
+          restaurantId: 'restaurant_002',
+          datos: {
+            'id_cliente': 99,
+            'cedula': '0102030405',
+            'nombre': 'Cliente Demo',
+          },
+        );
+
+        final payload =
+            jsonDecode(insertedData!['datos'] as String)
+                as Map<String, dynamic>;
+
+        expect(payload.containsKey('id_cliente'), isFalse);
+        expect(payload, containsPair('cedula', '0102030405'));
+        expect(payload, containsPair('restaurant_id', 'restaurant_002'));
+      },
+    );
   });
 }

@@ -8,6 +8,7 @@ import 'package:restaurant_app/features/auth/presentation/providers/auth_provide
 import 'package:restaurant_app/features/usuarios/domain/entities/usuario.dart';
 import 'package:restaurant_app/features/usuarios/domain/repositories/usuario_repository.dart';
 import 'package:restaurant_app/features/usuarios/domain/usecases/usuario_usecases.dart';
+import 'package:restaurant_app/services/session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -16,6 +17,7 @@ void main() {
   group('AuthChangeNotifier login hardening', () {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
+      SessionService.overrideSensitiveStore(InMemorySensitiveSessionStore());
       await sl.reset();
       sl.registerSingleton<TenantContext>(
         TenantContext()..setFromSession(
@@ -27,6 +29,7 @@ void main() {
     });
 
     tearDown(() async {
+      SessionService.resetSensitiveStore();
       await sl.reset();
     });
 

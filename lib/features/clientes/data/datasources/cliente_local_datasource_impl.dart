@@ -62,6 +62,12 @@ class ClienteLocalDataSourceImpl implements ClienteLocalDataSource {
     );
   }
 
+  Map<String, dynamic> _toSyncPayload(ClienteModel cliente) {
+    final data = Map<String, dynamic>.from(cliente.toMap());
+    data.remove('id_cliente');
+    return data;
+  }
+
   void _validateCliente(ClienteModel cliente, {required bool validateCedula}) {
     if (validateCedula && !Cliente.esCedulaValida(cliente.cedula)) {
       throw const BusinessException(
@@ -220,6 +226,7 @@ class ClienteLocalDataSourceImpl implements ClienteLocalDataSource {
           registroId: '${reactivated.restaurantId}:${reactivated.cedula}',
           operacion: SyncOperation.update,
           restaurantId: reactivated.restaurantId,
+          datos: _toSyncPayload(reactivated),
         );
         return reactivated;
       }
@@ -237,6 +244,7 @@ class ClienteLocalDataSourceImpl implements ClienteLocalDataSource {
         registroId: '${created.restaurantId}:${created.cedula}',
         operacion: SyncOperation.insert,
         restaurantId: created.restaurantId,
+        datos: _toSyncPayload(created),
       );
       return created;
     } on BusinessException {
@@ -269,6 +277,7 @@ class ClienteLocalDataSourceImpl implements ClienteLocalDataSource {
         registroId: '${updated.restaurantId}:${updated.cedula}',
         operacion: SyncOperation.update,
         restaurantId: updated.restaurantId,
+        datos: _toSyncPayload(updated),
       );
       return updated;
     } on BusinessException {

@@ -240,14 +240,33 @@ class PedidoLocalDataSourceImpl implements PedidoLocalDataSource {
   @override
   Future<void> deletePedido(String id) async {
     try {
-      // Eliminar items primero (cascade manual)
-      await _dbHelper.delete(
+      final itemRows = await _dbHelper.query(
         _tableItems,
         where: 'pedido_id = ?',
         whereArgs: [id],
       );
-      // Luego eliminar el pedido
-      await _dbHelper.delete(_tablePedidos, where: 'id = ?', whereArgs: [id]);
+      final itemIds = itemRows
+          .map((row) => row['id'])
+          .whereType<String>()
+          .where((itemId) => itemId.isNotEmpty)
+          .toList();
+
+      await _dbHelper.transaction((txn) async {
+        // Eliminar items primero (cascade manual)
+        await txn.delete(_tableItems, where: 'pedido_id = ?', whereArgs: [id]);
+        // Luego eliminar el pedido
+        await txn.delete(_tablePedidos, where: 'id = ?', whereArgs: [id]);
+      });
+
+      for (final itemId in itemIds) {
+        await _syncManager.registrarOperacion(
+          tabla: _tableItems,
+          registroId: itemId,
+          operacion: SyncOperation.delete,
+          restaurantId: _tenantContext.restaurantId,
+        );
+      }
+
       await _syncManager.registrarOperacion(
         tabla: _tablePedidos,
         registroId: id,

@@ -17,6 +17,7 @@ class SyncRecord {
   final bool sincronizado;
   final int intentos;
   final DateTime createdAt;
+  final DateTime updatedAt;
   final String restaurantId;
 
   const SyncRecord({
@@ -28,8 +29,9 @@ class SyncRecord {
     this.sincronizado = false,
     this.intentos = 0,
     required this.createdAt,
+    DateTime? updatedAt,
     required this.restaurantId,
-  });
+  }) : updatedAt = updatedAt ?? createdAt;
 
   Map<String, dynamic> toMap() {
     return {
@@ -41,6 +43,7 @@ class SyncRecord {
       'sincronizado': sincronizado ? 1 : 0,
       'intentos': intentos,
       'created_at': createdAt.toIso8601String(),
+      'updated_at': updatedAt.toIso8601String(),
       'restaurant_id': restaurantId,
     };
   }
@@ -57,6 +60,9 @@ class SyncRecord {
       sincronizado: (map['sincronizado'] as int) == 1,
       intentos: map['intentos'] as int? ?? 0,
       createdAt: DateTime.parse(map['created_at'] as String),
+      updatedAt: map['updated_at'] != null
+          ? DateTime.parse(map['updated_at'] as String)
+          : DateTime.parse(map['created_at'] as String),
       restaurantId: map['restaurant_id'] as String? ?? '',
     );
   }

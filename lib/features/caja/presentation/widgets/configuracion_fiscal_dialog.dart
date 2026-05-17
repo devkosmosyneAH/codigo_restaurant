@@ -284,6 +284,9 @@ class _ConfiguracionFiscalDialogState extends State<ConfiguracionFiscalDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogMaxWidth = (viewport.width * 0.92).clamp(280.0, 520.0);
+    final dialogMaxHeight = (viewport.height * 0.80).clamp(420.0, 820.0);
 
     return AlertDialog(
       title: Row(
@@ -295,8 +298,8 @@ class _ConfiguracionFiscalDialogState extends State<ConfiguracionFiscalDialog> {
       ),
       content: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: 520,
-          maxHeight: MediaQuery.sizeOf(context).height * 0.80,
+          maxWidth: dialogMaxWidth,
+          maxHeight: dialogMaxHeight,
         ),
         child: _isLoading
             ? const Center(

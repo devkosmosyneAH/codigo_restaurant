@@ -1018,6 +1018,116 @@ class DatabaseHelper {
         'INTEGER NOT NULL DEFAULT 15',
       );
     }
+    if (oldVersion < 31) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS drive_connections (
+          id TEXT PRIMARY KEY,
+          restaurant_id TEXT NOT NULL,
+          folder_id TEXT NOT NULL,
+          folder_name TEXT NOT NULL,
+          owner_email TEXT,
+          public_share_enabled INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (restaurant_id) REFERENCES restaurantes(id)
+        )
+      ''');
+      await db.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_drive_connections_restaurant
+        ON drive_connections (restaurant_id)
+      ''');
+
+      await _addColumnIfMissing(db, 'productos', 'drive_file_id', 'TEXT');
+      await _addColumnIfMissing(db, 'productos', 'drive_public_url', 'TEXT');
+      await _addColumnIfMissing(
+        db,
+        'productos',
+        'imagen_local_cache_path',
+        'TEXT',
+      );
+    }
+    if (oldVersion < 32) {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_productos_restaurant_public_lookup
+        ON productos (restaurant_id, activo, disponible, categoria_id, nombre COLLATE NOCASE)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_variantes_producto_activo_precio
+        ON variantes (producto_id, activo, precio)
+      ''');
+    }
+    if (oldVersion < 33) {
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_sync_log_pending_lookup
+        ON sync_log (sincronizado, tabla, intentos, created_at)
+      ''');
+    }
+    if (oldVersion < 34) {
+      await _addColumnIfMissing(
+        db,
+        'ventas',
+        'updated_at',
+        "TEXT NOT NULL DEFAULT (datetime('now'))",
+      );
+      await _addColumnIfMissing(
+        db,
+        'reservaciones',
+        'updated_at',
+        "TEXT NOT NULL DEFAULT (datetime('now'))",
+      );
+
+      await db.execute(
+        "UPDATE ventas SET updated_at = COALESCE(updated_at, created_at)",
+      );
+      await db.execute(
+        'UPDATE reservaciones '
+        'SET updated_at = COALESCE(updated_at, created_at)',
+      );
+    }
+    if (oldVersion < 35) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sync_audit_log (
+          id TEXT PRIMARY KEY,
+          sync_record_id TEXT,
+          direction TEXT NOT NULL,
+          status TEXT NOT NULL,
+          tabla TEXT NOT NULL,
+          registro_id TEXT NOT NULL,
+          restaurant_id TEXT NOT NULL,
+          detail TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_sync_audit_log_created_at
+        ON sync_audit_log (created_at)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_sync_audit_log_lookup
+        ON sync_audit_log (direction, status, tabla, restaurant_id, created_at)
+      ''');
+    }
+    if (oldVersion < 36) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS security_audit_log (
+          id TEXT PRIMARY KEY,
+          event_type TEXT NOT NULL,
+          user_id TEXT,
+          restaurant_id TEXT,
+          detail TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_security_audit_log_created_at
+        ON security_audit_log (created_at)
+      ''');
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_security_audit_log_event
+        ON security_audit_log (event_type, created_at)
+      ''');
+    }
   }
 
   static Future<void> _addColumnIfMissing(

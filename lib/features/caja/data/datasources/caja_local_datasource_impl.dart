@@ -35,6 +35,7 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
   static const _tablePedidoItems = 'pedido_items';
   static const _tableCotizaciones = 'cotizaciones';
   static const _tableCotizacionItems = 'cotizacion_items';
+  static const _tableReservaciones = 'reservaciones';
   static const _tableSriComprobantes = 'sri_comprobantes';
   static const _tableSriAttempts = 'sri_attempts';
 
@@ -42,13 +43,20 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
 
   @override
   Future<void> registrarVenta(VentaModel venta, {String? mesaId}) async {
+    final nowIso = DateTime.now().toIso8601String();
+    final ventaData = {...venta.toMap(), 'updated_at': nowIso};
+    final pedidoData = {'estado': 'entregado', 'updated_at': nowIso};
+    final mesaData = {'estado': 'libre', 'updated_at': nowIso};
+    final cotizacionData = {'estado': 'cobrada', 'updated_at': nowIso};
+    final reservaData = {'estado': 'realizada', 'updated_at': nowIso};
+    final reservacionesActualizadas = <String>[];
+
     try {
       await _dbHelper.transaction((txn) async {
         // 1. Insertar venta principal
-        await txn.insert(_tableVentas, venta.toMap());
+        await txn.insert(_tableVentas, ventaData);
 
         if (venta.sriComprobanteId != null) {
-          final now = DateTime.now().toIso8601String();
           await txn.insert(_tableSriComprobantes, {
             'id': venta.sriComprobanteId,
             'restaurant_id': venta.restaurantId,
@@ -63,8 +71,8 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
             'fecha_autorizacion': venta.sriFechaAutorizacion?.toIso8601String(),
             'mensaje': venta.sriMensaje,
             'ride_path': venta.sriRidePath,
-            'created_at': now,
-            'updated_at': now,
+            'created_at': nowIso,
+            'updated_at': nowIso,
           });
           await txn.insert(_tableSriAttempts, {
             'id': const Uuid().v4(),
@@ -79,10 +87,10 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
             'retry_count': 0,
             'next_retry_at':
                 venta.estadoSri == EstadoComprobanteSri.pendienteEnvio
-                ? now
+                ? nowIso
                 : null,
             'payload_hash': venta.sriXmlHash,
-            'created_at': now,
+            'created_at': nowIso,
           });
         }
 
@@ -95,10 +103,7 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         // 3. Marcar el pedido como entregado
         await txn.update(
           _tablePedidos,
-          {
-            'estado': 'entregado',
-            'updated_at': DateTime.now().toIso8601String(),
-          },
+          pedidoData,
           where: 'id = ?',
           whereArgs: [venta.pedidoId],
         );
@@ -107,7 +112,7 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         if (mesaId != null) {
           await txn.update(
             _tableMesas,
-            {'estado': 'libre', 'updated_at': DateTime.now().toIso8601String()},
+            mesaData,
             where: 'id = ?',
             whereArgs: [mesaId],
           );
@@ -115,18 +120,32 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
 
         // 5. Marcar la cotización como cobrada si aplica
         if (venta.sourceCotizacionId != null) {
+          final reservaRows = await txn.query(
+            _tableReservaciones,
+            columns: ['id'],
+            where: 'cotizacion_id = ?',
+            whereArgs: [venta.sourceCotizacionId],
+          );
+          reservacionesActualizadas.addAll(
+            reservaRows
+                .map((row) => row['id'])
+                .whereType<String>()
+                .where((id) => id.isNotEmpty),
+          );
+
           await txn.update(
             _tableCotizaciones,
-            {'estado': 'cobrada'},
+            cotizacionData,
             where: 'id = ?',
             whereArgs: [venta.sourceCotizacionId],
           );
 
           // 6. Marcar la reserva asociada como 'realizada' si existe
-          await txn.rawUpdate(
-            "UPDATE reservaciones SET estado = 'realizada' "
-            'WHERE cotizacion_id = ?',
-            [venta.sourceCotizacionId],
+          await txn.update(
+            _tableReservaciones,
+            reservaData,
+            where: 'cotizacion_id = ?',
+            whereArgs: [venta.sourceCotizacionId],
           );
         }
       });
@@ -139,8 +158,46 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
       registroId: venta.id,
       operacion: SyncOperation.insert,
       restaurantId: venta.restaurantId,
-      datos: venta.toMap(),
+      datos: ventaData,
     );
+
+    await _syncManager.registrarOperacion(
+      tabla: _tablePedidos,
+      registroId: venta.pedidoId,
+      operacion: SyncOperation.update,
+      restaurantId: venta.restaurantId,
+      datos: pedidoData,
+    );
+
+    if (mesaId != null) {
+      await _syncManager.registrarOperacion(
+        tabla: _tableMesas,
+        registroId: mesaId,
+        operacion: SyncOperation.update,
+        restaurantId: venta.restaurantId,
+        datos: mesaData,
+      );
+    }
+
+    if (venta.sourceCotizacionId != null) {
+      await _syncManager.registrarOperacion(
+        tabla: _tableCotizaciones,
+        registroId: venta.sourceCotizacionId!,
+        operacion: SyncOperation.update,
+        restaurantId: venta.restaurantId,
+        datos: cotizacionData,
+      );
+
+      for (final reservaId in reservacionesActualizadas) {
+        await _syncManager.registrarOperacion(
+          tabla: _tableReservaciones,
+          registroId: reservaId,
+          operacion: SyncOperation.update,
+          restaurantId: venta.restaurantId,
+          datos: reservaData,
+        );
+      }
+    }
   }
 
   // ── Consultas de ventas ───────────────────────────────────────
@@ -159,12 +216,20 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         [restaurantId],
       );
 
-      final ventas = <VentaModel>[];
-      for (final row in results) {
-        final detalles = await _getDetallesByVenta(row['id'] as String);
-        ventas.add(VentaModel.fromMap(row, detalles: detalles));
-      }
-      return ventas;
+      final ventaIds = results
+          .map((row) => row['id'])
+          .whereType<String>()
+          .toList(growable: false);
+      final detallesByVenta = await _getDetallesByVentaIds(ventaIds);
+
+      return results
+          .map((row) {
+            final ventaId = row['id'] as String;
+            final detalles =
+                detallesByVenta[ventaId] ?? const <VentaDetalleModel>[];
+            return VentaModel.fromMap(row, detalles: detalles);
+          })
+          .toList(growable: false);
     } catch (e) {
       throw DatabaseException(message: 'Error al obtener ventas: $e');
     }
@@ -189,12 +254,20 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         [restaurantId, fechaStr],
       );
 
-      final ventas = <VentaModel>[];
-      for (final row in results) {
-        final detalles = await _getDetallesByVenta(row['id'] as String);
-        ventas.add(VentaModel.fromMap(row, detalles: detalles));
-      }
-      return ventas;
+      final ventaIds = results
+          .map((row) => row['id'])
+          .whereType<String>()
+          .toList(growable: false);
+      final detallesByVenta = await _getDetallesByVentaIds(ventaIds);
+
+      return results
+          .map((row) {
+            final ventaId = row['id'] as String;
+            final detalles =
+                detallesByVenta[ventaId] ?? const <VentaDetalleModel>[];
+            return VentaModel.fromMap(row, detalles: detalles);
+          })
+          .toList(growable: false);
     } catch (e) {
       throw DatabaseException(message: 'Error al obtener ventas por fecha: $e');
     }
@@ -262,6 +335,12 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         [restaurantId],
       );
 
+      final pedidoIds = results
+          .map((row) => row['id'])
+          .whereType<String>()
+          .toList(growable: false);
+      final itemsByPedido = await _getItemsByPedidoIds(pedidoIds);
+
       final pedidos = <PedidoModel>[];
       for (final row in results) {
         final mesaNombre =
@@ -270,7 +349,8 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         final map = Map<String, dynamic>.from(row);
         map['mesa_nombre'] = mesaNombre;
 
-        final items = await _getItemsByPedido(row['id'] as String);
+        final pedidoId = row['id'] as String;
+        final items = itemsByPedido[pedidoId] ?? const <PedidoItemModel>[];
         pedidos.add(PedidoModel.fromMap(map, items: items));
       }
       return pedidos;
@@ -299,9 +379,17 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
         [restaurantId],
       );
 
+      final cotizacionIds = results
+          .map((row) => row['id'])
+          .whereType<String>()
+          .toList(growable: false);
+      final itemsByCotizacion = await _getCotizacionItemsByIds(cotizacionIds);
+
       final cotizaciones = <CotizacionModel>[];
       for (final row in results) {
-        final items = await _getCotizacionItems(row['id'] as String);
+        final cotizacionId = row['id'] as String;
+        final items =
+            itemsByCotizacion[cotizacionId] ?? const <CotizacionItemModel>[];
         cotizaciones.add(CotizacionModel.fromMap(row, items: items));
       }
       return cotizaciones;
@@ -323,6 +411,27 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
     return results.map((r) => VentaDetalleModel.fromMap(r)).toList();
   }
 
+  Future<Map<String, List<VentaDetalleModel>>> _getDetallesByVentaIds(
+    List<String> ventaIds,
+  ) async {
+    if (ventaIds.isEmpty) return const {};
+
+    final placeholders = List.filled(ventaIds.length, '?').join(',');
+    final rows = await _dbHelper.rawQuery('''
+      SELECT *
+      FROM $_tableDetalles
+      WHERE venta_id IN ($placeholders)
+      ORDER BY venta_id ASC
+      ''', ventaIds);
+
+    final grouped = <String, List<VentaDetalleModel>>{};
+    for (final row in rows) {
+      final detalle = VentaDetalleModel.fromMap(row);
+      grouped.putIfAbsent(detalle.ventaId, () => []).add(detalle);
+    }
+    return grouped;
+  }
+
   Future<List<PedidoItemModel>> _getItemsByPedido(String pedidoId) async {
     final results = await _dbHelper.rawQuery(
       '''
@@ -340,6 +449,31 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
     return results.map((r) => PedidoItemModel.fromMap(r)).toList();
   }
 
+  Future<Map<String, List<PedidoItemModel>>> _getItemsByPedidoIds(
+    List<String> pedidoIds,
+  ) async {
+    if (pedidoIds.isEmpty) return const {};
+
+    final placeholders = List.filled(pedidoIds.length, '?').join(',');
+    final rows = await _dbHelper.rawQuery('''
+      SELECT pi.*,
+             p.nombre AS producto_nombre,
+             v.nombre AS variante_nombre
+      FROM $_tablePedidoItems pi
+      LEFT JOIN productos p ON pi.producto_id = p.id
+      LEFT JOIN variantes v ON pi.variante_id = v.id
+      WHERE pi.pedido_id IN ($placeholders)
+      ORDER BY pi.pedido_id ASC, pi.created_at ASC
+      ''', pedidoIds);
+
+    final grouped = <String, List<PedidoItemModel>>{};
+    for (final row in rows) {
+      final item = PedidoItemModel.fromMap(row);
+      grouped.putIfAbsent(item.pedidoId, () => []).add(item);
+    }
+    return grouped;
+  }
+
   Future<List<CotizacionItemModel>> _getCotizacionItems(
     String cotizacionId,
   ) async {
@@ -350,6 +484,27 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
       orderBy: 'rowid ASC',
     );
     return results.map((r) => CotizacionItemModel.fromMap(r)).toList();
+  }
+
+  Future<Map<String, List<CotizacionItemModel>>> _getCotizacionItemsByIds(
+    List<String> cotizacionIds,
+  ) async {
+    if (cotizacionIds.isEmpty) return const {};
+
+    final placeholders = List.filled(cotizacionIds.length, '?').join(',');
+    final rows = await _dbHelper.rawQuery('''
+      SELECT *
+      FROM $_tableCotizacionItems
+      WHERE cotizacion_id IN ($placeholders)
+      ORDER BY cotizacion_id ASC, rowid ASC
+      ''', cotizacionIds);
+
+    final grouped = <String, List<CotizacionItemModel>>{};
+    for (final row in rows) {
+      final item = CotizacionItemModel.fromMap(row);
+      grouped.putIfAbsent(item.cotizacionId, () => []).add(item);
+    }
+    return grouped;
   }
 
   String _extractSecuencial(String? claveAcceso) {

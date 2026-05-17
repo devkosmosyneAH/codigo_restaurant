@@ -13,6 +13,9 @@ class Producto extends Equatable {
   final String? descripcion;
   final double precio;
   final String? imagenUrl;
+  final String? driveFileId;
+  final String? drivePublicUrl;
+  final String? imagenLocalCachePath;
   final bool disponible;
   final bool activo;
   final DateTime createdAt;
@@ -29,6 +32,9 @@ class Producto extends Equatable {
     this.descripcion,
     required this.precio,
     this.imagenUrl,
+    this.driveFileId,
+    this.drivePublicUrl,
+    this.imagenLocalCachePath,
     this.disponible = true,
     this.activo = true,
     required this.createdAt,
@@ -43,6 +49,22 @@ class Producto extends Equatable {
     return precios.reduce((a, b) => a < b ? a : b);
   }
 
+  /// Precio unitario recomendado para mostrar y cotizar.
+  ///
+  /// Cuando el producto tiene variantes, el precio base puede ser referencial
+  /// (incluso 0.0). En ese caso se usa el precio mínimo disponible.
+  double get precioReferencial {
+    if (!tieneVariantes) return precio;
+
+    final preciosVariantes = variantes
+        .where((v) => v.activo)
+        .map((v) => v.precio)
+        .toList();
+
+    if (preciosVariantes.isEmpty) return precio;
+    return preciosVariantes.reduce((a, b) => a < b ? a : b);
+  }
+
   /// Indica si tiene variantes configuradas.
   bool get tieneVariantes => variantes.isNotEmpty;
 
@@ -54,6 +76,9 @@ class Producto extends Equatable {
     String? descripcion,
     double? precio,
     String? imagenUrl,
+    String? driveFileId,
+    String? drivePublicUrl,
+    String? imagenLocalCachePath,
     bool? disponible,
     bool? activo,
     DateTime? createdAt,
@@ -68,6 +93,9 @@ class Producto extends Equatable {
       descripcion: descripcion ?? this.descripcion,
       precio: precio ?? this.precio,
       imagenUrl: imagenUrl ?? this.imagenUrl,
+      driveFileId: driveFileId ?? this.driveFileId,
+      drivePublicUrl: drivePublicUrl ?? this.drivePublicUrl,
+      imagenLocalCachePath: imagenLocalCachePath ?? this.imagenLocalCachePath,
       disponible: disponible ?? this.disponible,
       activo: activo ?? this.activo,
       createdAt: createdAt ?? this.createdAt,
@@ -85,9 +113,13 @@ class Producto extends Equatable {
     descripcion,
     precio,
     imagenUrl,
+    driveFileId,
+    drivePublicUrl,
+    imagenLocalCachePath,
     disponible,
     activo,
     createdAt,
     updatedAt,
+    variantes,
   ];
 }

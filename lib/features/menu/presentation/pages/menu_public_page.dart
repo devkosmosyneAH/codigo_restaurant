@@ -29,13 +29,26 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
     with TickerProviderStateMixin {
   TabController? _tabController;
   int _tabCount = 0;
+  bool _menuLoadRequested = false;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  void _requestMenuLoadIfNeeded({required bool canLoadMenu}) {
+    if (!canLoadMenu || _menuLoadRequested) return;
+    _menuLoadRequested = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(menuProvider.notifier).loadMenu();
     });
+  }
+
+  void _resetTabs() {
+    _tabController?.dispose();
+    _tabController = null;
+    _tabCount = 0;
   }
 
   void _syncTabController(int categoriaCount) {
@@ -83,8 +96,21 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(menuProvider);
+    final publicConfigState = ref.watch(publicConfigProvider);
+    final hasResolvedPublicConfig =
+        !publicConfigState.isLoading || publicConfigState.hasConfig;
+    final isMenuEnabled = publicConfigState.config?.mostrarBotonMenu ?? true;
+    final canLoadMenu = hasResolvedPublicConfig && isMenuEnabled;
+
+    _requestMenuLoadIfNeeded(canLoadMenu: canLoadMenu);
+
+    if (isMenuEnabled) {
+      _syncTabController(state.categorias.length);
+    } else {
+      _resetTabs();
+    }
+
     final cart = ref.watch(cotizacionCartProvider);
-    _syncTabController(state.categorias.length);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F5F1),
@@ -94,12 +120,13 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
         leading: _buildLeadingButton(context),
         title: _buildHeaderTitle(context),
         actions: [
-          IconButton(
-            tooltip: 'Cotizar',
-            onPressed: () =>
-                CotizacionSheet.show(context, mesaId: widget.mesaId),
-            icon: _CartActionIcon(totalItems: cart.totalItems),
-          ),
+          if (isMenuEnabled)
+            IconButton(
+              tooltip: 'Cotizar',
+              onPressed: () =>
+                  CotizacionSheet.show(context, mesaId: widget.mesaId),
+              icon: _CartActionIcon(totalItems: cart.totalItems),
+            ),
           IconButton(
             tooltip: 'Fechas disponibles',
             onPressed: () => context.go(AppRouter.reservasPublico),
@@ -137,10 +164,56 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
                 ),
               ),
       ),
-      body: state.isLoading
+      body: !hasResolvedPublicConfig
+          ? const Center(child: CircularProgressIndicator())
+          : !isMenuEnabled
+          ? _buildMenuDisabledBody(context)
+          : state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : _buildBody(context, state),
-      bottomNavigationBar: _buildBottomBar(context),
+      bottomNavigationBar: isMenuEnabled ? _buildBottomBar(context) : null,
+    );
+  }
+
+  Widget _buildMenuDisabledBody(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.lock_outline_rounded,
+              size: 44,
+              color: AppColors.textSecondary,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'El menú público no está disponible en este momento.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Intenta nuevamente más tarde o visita la página principal del restaurante.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => context.go(AppRouter.restaurantePublico),
+              icon: const Icon(Icons.storefront_rounded),
+              label: const Text('Ir a la página pública'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
