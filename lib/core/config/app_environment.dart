@@ -117,7 +117,8 @@ class AppEnvironment {
     if (_clientId.isNotEmpty) return _clientId;
     if (_viteGoogleClientId.isNotEmpty) return _viteGoogleClientId;
     if (_nextGoogleClientId.isNotEmpty) return _nextGoogleClientId;
-    return _legacyGoogleClientId;
+    if (_legacyGoogleClientId.isNotEmpty) return _legacyGoogleClientId;
+    return '125358587893-k8t94o1m266010m2mm7kaip8agu8g27j.apps.googleusercontent.com';
   }
 
   /// True si el folder root está configurado y la integración con Drive

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:restaurant_app/core/constants/app_constants.dart';
+import 'package:restaurant_app/core/config/app_environment.dart';
 
 /// Resultado de una operación de backup o restauración.
 class DriveResult {
@@ -35,6 +36,9 @@ class DriveBackupService {
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: [drive.DriveApi.driveFileScope],
+    clientId: AppEnvironment.googleClientId.isEmpty
+        ? null
+        : AppEnvironment.googleClientId,
   );
 
   GoogleSignInAccount? _currentUser;

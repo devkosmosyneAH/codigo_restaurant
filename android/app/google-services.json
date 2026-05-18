@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1062396228506",
+    "project_id": "restaura-a1e34",
+    "storage_bucket": "restaura-a1e34.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1062396228506:android:9ae562109a517ed7a38023",
+        "android_client_info": {
+          "package_name": "com.devkosmosyne.lapena"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1062396228506-135fl09mtdad51p3f4njeb3or4vhvdr5.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyMYO7DLe4WlJeGeBkOJqjV5uHXHClFHQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1062396228506-135fl09mtdad51p3f4njeb3or4vhvdr5.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

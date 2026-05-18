@@ -56,7 +56,12 @@ class DriveMenuConnectionService {
   }) : _datasource = datasource,
        _googleSignIn =
            googleSignIn ??
-           GoogleSignIn(scopes: const [drive.DriveApi.driveFileScope]),
+           GoogleSignIn(
+             scopes: const [drive.DriveApi.driveFileScope],
+             clientId: AppEnvironment.googleClientId.isEmpty
+                 ? null
+                 : AppEnvironment.googleClientId,
+           ),
        _uuid = uuid ?? const Uuid();
 
   GoogleSignInAccount? _currentUser;
