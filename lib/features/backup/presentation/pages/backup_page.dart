@@ -149,15 +149,26 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final driveState = ref.watch(driveBackupProvider);
-    final driveNotifier = ref.read(driveBackupProvider.notifier);
+    final supportsDriveSignIn =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
 
-    // Escuchar resultado de operaciones Drive
-    ref.listen(driveBackupProvider.select((s) => s.lastMessage), (_, msg) {
-      if (msg != null && mounted) {
-        _showMsg(msg, success: driveState.lastSuccess);
-      }
-    });
+    DriveBackupState? driveState;
+    DriveBackupNotifier? driveNotifier;
+
+    if (supportsDriveSignIn) {
+      driveState = ref.watch(driveBackupProvider);
+      driveNotifier = ref.read(driveBackupProvider.notifier);
+
+      // Escuchar resultado de operaciones Drive
+      ref.listen(driveBackupProvider.select((s) => s.lastMessage), (_, msg) {
+        if (msg != null && mounted) {
+          _showMsg(msg, success: driveState!.lastSuccess);
+        }
+      });
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F4F1),
@@ -194,8 +205,8 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           ),
           const SizedBox(height: 20),
 
-          // ── Sección Drive (solo en plataformas nativas) ───────────
-          if (!kIsWeb) ...[
+          // ── Sección Drive (solo plataformas compatibles) ───────────
+          if (supportsDriveSignIn) ...[
             _SectionLabel(
               icon: Icons.cloud_sync_rounded,
               label: 'Google Drive',
@@ -203,19 +214,22 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             ),
             const SizedBox(height: 8),
             _DriveSection(
-              state: driveState,
-              notifier: driveNotifier,
+              state: driveState!,
+              notifier: driveNotifier!,
               dtFmt: _dtFmtDrive,
-              onConfirmBackup: () => _confirmDriveBackup(driveNotifier),
-              onConfirmRestore: () => _confirmDriveRestore(driveNotifier),
+              onConfirmBackup: () => _confirmDriveBackup(driveNotifier!),
+              onConfirmRestore: () => _confirmDriveRestore(driveNotifier!),
             ),
             const SizedBox(height: 16),
           ] else ...[
             _InfoBanner(
               icon: Icons.info_outline_rounded,
-              message:
-                  'El respaldo en Google Drive no está disponible en la versión web. '
-                  'Usa la app de escritorio o Android.',
+              message: kIsWeb
+                  ? 'El respaldo en Google Drive no está disponible en la versión web. '
+                        'Usa Android, iOS o macOS.'
+                  : 'El inicio de sesión de Google Drive no está disponible en '
+                        'esta plataforma. Usa Android, iOS o macOS para conectar '
+                        'tu cuenta y mantenerla iniciada.',
             ),
             const SizedBox(height: 16),
           ],

@@ -21,11 +21,13 @@ class HybridSyncOrchestrator {
     required DatabaseHelper dbHelper,
     required TenantContext tenantContext,
     Connectivity? connectivity,
+    Future<void> Function()? beforePushHook,
   }) : _syncManager = syncManager,
        _cloudService = cloudService,
        _dbHelper = dbHelper,
        _tenantContext = tenantContext,
-       _connectivity = connectivity ?? Connectivity();
+       _connectivity = connectivity ?? Connectivity(),
+       _beforePushHook = beforePushHook;
 
   static const Duration _pulseInterval = Duration(seconds: 30);
   static const int _pushBatchSize = 100;
@@ -52,6 +54,7 @@ class HybridSyncOrchestrator {
   final DatabaseHelper _dbHelper;
   final TenantContext _tenantContext;
   final Connectivity _connectivity;
+  final Future<void> Function()? _beforePushHook;
 
   final Map<String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
   _remoteSubs = {};
@@ -65,6 +68,14 @@ class HybridSyncOrchestrator {
   bool _syncInProgress = false;
   bool _cloudSyncEnabled = true;
   String? _listeningTenantId;
+
+  /// Fuerza un ciclo de sincronización en este momento.
+  ///
+  /// Si la orquestación aún no está iniciada o no hay conectividad,
+  /// el método retorna sin lanzar error.
+  Future<void> syncNow({String reason = 'manual'}) async {
+    await _runCycle(reason: reason);
+  }
 
   Future<void> start() async {
     if (_started) return;
@@ -129,6 +140,13 @@ class HybridSyncOrchestrator {
     try {
       await _cloudService.ensureAvailable();
       await _ensureRealtimeListeners();
+      if (_beforePushHook != null) {
+        try {
+          await _beforePushHook!();
+        } catch (_) {
+          // No interrumpe push cloud si falla una tarea auxiliar local.
+        }
+      }
       await _pushPendingRecords();
     } catch (_) {
       // Si la nube falla (auth/config/transitorio), mantenemos modo local.

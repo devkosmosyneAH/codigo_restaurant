@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
+import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/domain/entities/categoria.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
@@ -72,6 +75,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
   final CreateVariante _createVariante;
   final UpdateVariante _updateVariante;
   final DeleteVariante _deleteVariante;
+  final Future<void> Function(String reason)? _requestCloudSync;
   Future<void>? _loadMenuInFlight;
 
   MenuNotifier({
@@ -88,6 +92,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
     required CreateVariante createVariante,
     required UpdateVariante updateVariante,
     required DeleteVariante deleteVariante,
+    Future<void> Function(String reason)? requestCloudSync,
   }) : _getCategorias = getCategorias,
        _createCategoria = createCategoria,
        _updateCategoria = updateCategoria,
@@ -101,7 +106,26 @@ class MenuNotifier extends StateNotifier<MenuState> {
        _createVariante = createVariante,
        _updateVariante = updateVariante,
        _deleteVariante = deleteVariante,
+       _requestCloudSync = requestCloudSync,
        super(const MenuState());
+
+  void _triggerCloudSync(String reason) {
+    final callback = _requestCloudSync;
+    if (callback == null) return;
+
+    unawaited(_runCloudSync(callback, reason));
+  }
+
+  Future<void> _runCloudSync(
+    Future<void> Function(String reason) callback,
+    String reason,
+  ) async {
+    try {
+      await callback(reason);
+    } catch (_) {
+      // No bloquea el flujo local del menú si la nube falla.
+    }
+  }
 
   // ── Carga inicial ─────────────────────────────────────────────
 
@@ -170,6 +194,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-create-categoria');
         return true;
       },
     );
@@ -185,6 +210,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-update-categoria');
         return true;
       },
     );
@@ -200,6 +226,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-delete-categoria');
         return true;
       },
     );
@@ -222,6 +249,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-create-producto');
         return true;
       },
     );
@@ -237,6 +265,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-update-producto');
         return true;
       },
     );
@@ -252,6 +281,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-delete-producto');
         return true;
       },
     );
@@ -265,16 +295,21 @@ class MenuNotifier extends StateNotifier<MenuState> {
     state = state.copyWith(productos: updated);
 
     final result = await _toggleDisponibilidad(id, disponible);
-    result.fold((failure) {
-      // Revertir en caso de error
-      final reverted = state.productos
-          .map((p) => p.id == id ? p.copyWith(disponible: !disponible) : p)
-          .toList();
-      state = state.copyWith(
-        productos: reverted,
-        errorMessage: failure.message,
-      );
-    }, (_) {});
+    result.fold(
+      (failure) {
+        // Revertir en caso de error
+        final reverted = state.productos
+            .map((p) => p.id == id ? p.copyWith(disponible: !disponible) : p)
+            .toList();
+        state = state.copyWith(
+          productos: reverted,
+          errorMessage: failure.message,
+        );
+      },
+      (_) {
+        _triggerCloudSync('menu-toggle-disponibilidad');
+      },
+    );
   }
 
   // ── Variantes ──────────────────────────────────────────────────
@@ -293,6 +328,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       }
     }
     loadMenu(null, true);
+    _triggerCloudSync('menu-create-variante');
     return true;
   }
 
@@ -306,6 +342,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-update-variante');
         return true;
       },
     );
@@ -321,6 +358,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
       },
       (_) {
         loadMenu(null, true);
+        _triggerCloudSync('menu-delete-variante');
         return true;
       },
     );
@@ -343,5 +381,7 @@ final menuProvider = StateNotifierProvider<MenuNotifier, MenuState>((ref) {
     createVariante: sl(),
     updateVariante: sl(),
     deleteVariante: sl(),
+    requestCloudSync: (reason) =>
+        sl<HybridSyncOrchestrator>().syncNow(reason: reason),
   );
 });

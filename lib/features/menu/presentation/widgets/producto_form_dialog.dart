@@ -69,6 +69,12 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 
   bool get _isEditing => widget.producto != null;
   bool get _isBusy => _pickingImage || _submitting;
+  bool get _supportsDriveUpload {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+  }
 
   @override
   void initState() {
@@ -124,7 +130,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
   }
 
   Future<void> _restoreDriveSession() async {
-    if (!AppEnvironment.isDriveConfigured) return;
+    if (!AppEnvironment.isDriveConfigured || !_supportsDriveUpload) return;
 
     setState(() => _checkingDriveSession = true);
     final driveService = sl<DriveMenuConnectionService>();
@@ -140,6 +146,18 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 
   Future<void> _connectDriveNow() async {
     if (_checkingDriveSession) return;
+
+    if (!_supportsDriveUpload) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Google Drive no está disponible en esta plataforma para el menú.',
+          ),
+        ),
+      );
+      return;
+    }
 
     setState(() => _checkingDriveSession = true);
     final driveService = sl<DriveMenuConnectionService>();
@@ -430,6 +448,26 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       );
     }
 
+    if (!_supportsDriveUpload) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: cs.secondaryContainer.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: cs.secondaryContainer),
+        ),
+        child: Text(
+          'En esta plataforma la foto se guarda localmente junto al producto. '
+          'Para publicarla automáticamente en Drive (QR público), usa Android, iOS o macOS.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: cs.onSecondaryContainer,
+            height: 1.35,
+          ),
+        ),
+      );
+    }
+
     final statusText = _driveSessionReady
         ? 'Conectado${_driveOwnerEmail != null ? ': $_driveOwnerEmail' : ''}'
         : 'Sin conectar';
@@ -530,46 +568,93 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       // Si la imagen proviene del selector local, se sube a Drive para
       // garantizar acceso público sin autenticación (QR / página pública).
       if (_selectedImageBytes != null && _selectedImageMimeType != null) {
-        final signedIn = _driveSessionReady
-            ? true
-            : await driveService.signIn();
-        _driveSessionReady = signedIn;
-        _driveOwnerEmail = driveService.currentEmail;
-        if (!signedIn) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Inicia sesión en Google para publicar la imagen del menú.',
-              ),
-            ),
-          );
-          return;
-        }
+        final fallbackDataUri =
+            (_selectedImageData != null &&
+                _selectedImageData!.trim().isNotEmpty)
+            ? _selectedImageData!.trim()
+            : 'data:${_selectedImageMimeType!};base64,${base64Encode(_selectedImageBytes!)}';
 
-        final upload = await driveService.uploadProductImage(
-          restaurantId: restaurantId,
-          userId: userId,
-          productoId: productoId,
-          bytes: _selectedImageBytes!,
-          mimeType: _selectedImageMimeType!,
-          fileExtension: _selectedImageExtension ?? 'jpg',
-        );
+        var signedIn = _driveSessionReady;
+        var uploadedToDrive = false;
 
-        if (driveFileId != null && driveFileId != upload.fileId) {
-          final deleted = await driveService.tryDeleteProductImage(driveFileId);
-          if (!deleted) {
-            await driveQueue.enqueueDeleteImage(
-              restaurantId: restaurantId,
-              fileId: driveFileId,
-            );
+        if (AppEnvironment.isDriveConfigured && _supportsDriveUpload) {
+          if (!signedIn) {
+            signedIn = await driveService.signIn();
+          }
+          _driveSessionReady = signedIn;
+          _driveOwnerEmail = driveService.currentEmail;
+
+          if (signedIn) {
+            try {
+              final upload = await driveService.uploadProductImage(
+                restaurantId: restaurantId,
+                userId: userId,
+                productoId: productoId,
+                bytes: _selectedImageBytes!,
+                mimeType: _selectedImageMimeType!,
+                fileExtension: _selectedImageExtension ?? 'jpg',
+              );
+
+              if (driveFileId != null && driveFileId != upload.fileId) {
+                final deleted = await driveService.tryDeleteProductImage(
+                  driveFileId,
+                );
+                if (!deleted) {
+                  await driveQueue.enqueueDeleteImage(
+                    restaurantId: restaurantId,
+                    fileId: driveFileId,
+                  );
+                }
+              }
+
+              imagenUrl = upload.publicUrl;
+              driveFileId = upload.fileId;
+              drivePublicUrl = upload.publicUrl;
+              imagenLocalCachePath = upload.localCachePath;
+              uploadedToDrive = true;
+            } catch (_) {
+              uploadedToDrive = false;
+            }
           }
         }
 
-        imagenUrl = upload.publicUrl;
-        driveFileId = upload.fileId;
-        drivePublicUrl = upload.publicUrl;
-        imagenLocalCachePath = upload.localCachePath;
+        if (!uploadedToDrive) {
+          final previousDriveFileId = driveFileId;
+
+          if (previousDriveFileId != null &&
+              previousDriveFileId.isNotEmpty &&
+              AppEnvironment.isDriveConfigured) {
+            var deleted = false;
+            if (signedIn) {
+              deleted = await driveService.tryDeleteProductImage(
+                previousDriveFileId,
+              );
+            }
+            if (!deleted) {
+              await driveQueue.enqueueDeleteImage(
+                restaurantId: restaurantId,
+                fileId: previousDriveFileId,
+              );
+            }
+          }
+
+          imagenUrl = fallbackDataUri;
+          driveFileId = null;
+          drivePublicUrl = null;
+          imagenLocalCachePath = null;
+
+          if (AppEnvironment.isDriveConfigured && _supportsDriveUpload) {
+            await driveQueue.enqueueUploadImage(
+              restaurantId: restaurantId,
+              userId: userId,
+              productoId: productoId,
+              bytes: _selectedImageBytes!,
+              mimeType: _selectedImageMimeType!,
+              fileExtension: _selectedImageExtension ?? 'jpg',
+              previousDriveFileId: previousDriveFileId,
+            );
+          }
+        }
       }
 
       // Si el admin cambia a una URL manual externa, limpiar metadatos
@@ -624,7 +709,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       }
 
       // Drenado oportunista sin prompt interactivo.
-      await driveQueue.processPendingDeletes();
+      await driveQueue.processPendingOperations();
 
       final producto = Producto(
         id: productoId,

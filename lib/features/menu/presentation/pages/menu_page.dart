@@ -210,7 +210,7 @@ class _MenuPageState extends ConsumerState<MenuPage>
             fileId: driveFileId,
           );
           // Intento oportunista no interactivo para drenar cola si ya hay sesión.
-          await driveQueue.processPendingDeletes();
+          await driveQueue.processPendingOperations();
         }
       } catch (_) {
         // No bloquea el borrado local si Drive falla.

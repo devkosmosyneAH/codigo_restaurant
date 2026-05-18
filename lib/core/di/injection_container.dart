@@ -112,6 +112,11 @@ Future<void> initDependencies() async {
       cloudService: sl(),
       dbHelper: sl(),
       tenantContext: sl(),
+      beforePushHook: () async {
+        if (sl.isRegistered<DriveImageSyncQueueService>()) {
+          await sl<DriveImageSyncQueueService>().processPendingOperations();
+        }
+      },
     ),
   );
   sl.registerLazySingleton<ActivationChangeNotifier>(
@@ -213,7 +218,11 @@ void _initMenu() {
     () => DriveMenuConnectionService(datasource: sl()),
   );
   sl.registerLazySingleton<DriveImageSyncQueueService>(
-    () => DriveImageSyncQueueService(syncManager: sl(), driveService: sl()),
+    () => DriveImageSyncQueueService(
+      syncManager: sl(),
+      driveService: sl(),
+      dbHelper: sl(),
+    ),
   );
 
   // DataSources

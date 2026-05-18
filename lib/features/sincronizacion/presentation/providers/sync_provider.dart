@@ -177,7 +177,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
 
     if (_driveQueueService != null) {
       try {
-        final localResult = await _driveQueueService.processPendingDeletes(
+        final localResult = await _driveQueueService.processPendingOperations(
           allowInteractiveSignIn: true,
         );
         localOk = localResult.succeeded;
