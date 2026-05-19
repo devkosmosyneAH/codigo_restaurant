@@ -34,6 +34,7 @@ import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasou
 import 'package:restaurant_app/features/menu/data/repositories/menu_repository_impl.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
 import 'package:restaurant_app/features/menu/data/services/menu_realtime_database_service.dart';
 import 'package:restaurant_app/features/menu/domain/repositories/menu_repository.dart';
 import 'package:restaurant_app/features/menu/domain/usecases/menu_usecases.dart';
@@ -212,14 +213,18 @@ void _initPedidos() {
 
 /// Registra las dependencias del módulo de Menú.
 void _initMenu() {
+  sl.registerLazySingleton<MenuSyncDiagnosticsService>(
+    () => MenuSyncDiagnosticsService(),
+  );
   sl.registerLazySingleton<DriveConnectionLocalDatasource>(
     () => DriveConnectionLocalDatasource(dbHelper: sl()),
   );
   sl.registerLazySingleton<DriveMenuConnectionService>(
-    () => DriveMenuConnectionService(datasource: sl()),
+    () =>
+        DriveMenuConnectionService(datasource: sl(), diagnosticsService: sl()),
   );
   sl.registerLazySingleton<MenuRealtimeDatabaseService>(
-    () => MenuRealtimeDatabaseService(),
+    () => MenuRealtimeDatabaseService(diagnosticsService: sl()),
   );
   sl.registerLazySingleton<DriveImageSyncQueueService>(
     () => DriveImageSyncQueueService(
@@ -227,6 +232,8 @@ void _initMenu() {
       driveService: sl(),
       dbHelper: sl(),
       menuRealtimeDb: sl(),
+      tenantContext: sl(),
+      diagnosticsService: sl(),
     ),
   );
 

@@ -2,14 +2,18 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:restaurant_app/core/config/app_environment.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
 
 /// Sincroniza productos del menu hacia Firebase Realtime Database via REST.
 ///
 /// El servicio es tolerante a fallos: devuelve `false` si no pudo escribir,
 /// sin lanzar errores para no bloquear el flujo local offline-first.
 class MenuRealtimeDatabaseService {
-  MenuRealtimeDatabaseService({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+  MenuRealtimeDatabaseService({
+    http.Client? httpClient,
+    MenuSyncDiagnosticsService? diagnosticsService,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _diagnosticsService = diagnosticsService;
 
   static const Duration _requestTimeout = Duration(seconds: 12);
   static const Map<String, String> _jsonHeaders = {
@@ -17,6 +21,7 @@ class MenuRealtimeDatabaseService {
   };
 
   final http.Client _httpClient;
+  final MenuSyncDiagnosticsService? _diagnosticsService;
 
   bool get isConfigured => AppEnvironment.isRealtimeDatabaseConfigured;
 
@@ -32,6 +37,7 @@ class MenuRealtimeDatabaseService {
       method: _HttpMethod.put,
       uri: _productoUri(restaurantId: restaurantId, productoId: productoId),
       payload: payload,
+      operation: 'upsert_producto',
     );
   }
 
@@ -49,6 +55,7 @@ class MenuRealtimeDatabaseService {
       method: _HttpMethod.patch,
       uri: _productoUri(restaurantId: restaurantId, productoId: productoId),
       payload: payload,
+      operation: 'patch_producto',
     );
   }
 
@@ -61,6 +68,7 @@ class MenuRealtimeDatabaseService {
     return _request(
       method: _HttpMethod.delete,
       uri: _productoUri(restaurantId: restaurantId, productoId: productoId),
+      operation: 'delete_producto',
     );
   }
 
@@ -78,6 +86,7 @@ class MenuRealtimeDatabaseService {
     required _HttpMethod method,
     required Uri uri,
     Map<String, dynamic>? payload,
+    required String operation,
   }) async {
     try {
       final response = switch (method) {
@@ -101,8 +110,21 @@ class MenuRealtimeDatabaseService {
           await _httpClient.delete(uri).timeout(_requestTimeout),
       };
 
-      return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (_) {
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      _diagnosticsService?.recordRealtimeSync(
+        success: ok,
+        operation: operation,
+        details: ok
+            ? null
+            : 'RTDB respondió ${response.statusCode} para $operation',
+      );
+      return ok;
+    } catch (e) {
+      _diagnosticsService?.recordRealtimeSync(
+        success: false,
+        operation: operation,
+        details: 'Error RTDB en $operation: $e',
+      );
       return false;
     }
   }

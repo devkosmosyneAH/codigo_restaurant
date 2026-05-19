@@ -1,7 +1,10 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:restaurant_app/core/utils/local_image_provider.dart';
+import 'package:restaurant_app/core/utils/web_indexed_image_cache.dart';
 
 class MenuImageLoader extends StatefulWidget {
   final String? primaryImageValue;
@@ -138,12 +141,21 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
 
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
       final fixedUrl = _fixGoogleDriveUrl(raw);
-      candidates.add(
-        _ImageCandidate(
-          key: '$prefix:net:$fixedUrl',
-          provider: _resized(NetworkImage(fixedUrl)),
-        ),
-      );
+      if (kIsWeb) {
+        candidates.add(
+          _ImageCandidate(
+            key: '$prefix:web-net:$fixedUrl',
+            networkUrl: fixedUrl,
+          ),
+        );
+      } else {
+        candidates.add(
+          _ImageCandidate(
+            key: '$prefix:net:$fixedUrl',
+            provider: _resized(NetworkImage(fixedUrl)),
+          ),
+        );
+      }
       return;
     }
 
@@ -178,8 +190,30 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
     }
 
     final candidate = _candidates[_activeIndex];
+
+    if (kIsWeb && candidate.networkUrl != null) {
+      return _WebIndexedCachedNetworkImage(
+        imageUrl: candidate.networkUrl!,
+        width: widget.width,
+        height: widget.height,
+        fit: widget.fit,
+        filterQuality: widget.filterQuality,
+        placeholder: widget.placeholder,
+        cacheWidth: widget.cacheWidth,
+        showPlaceholderWhileLoading: widget.showPlaceholderWhileLoading,
+        enableFadeIn: widget.enableFadeIn,
+        onError: _advanceCandidate,
+      );
+    }
+
+    final provider = candidate.provider;
+    if (provider == null) {
+      _advanceCandidate();
+      return widget.placeholder;
+    }
+
     return Image(
-      image: candidate.provider,
+      image: provider,
       width: widget.width,
       height: widget.height,
       fit: widget.fit,
@@ -212,7 +246,190 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
 
 class _ImageCandidate {
   final String key;
-  final ImageProvider<Object> provider;
+  final ImageProvider<Object>? provider;
+  final String? networkUrl;
 
-  const _ImageCandidate({required this.key, required this.provider});
+  const _ImageCandidate({required this.key, this.provider, this.networkUrl});
+}
+
+class _WebIndexedCachedNetworkImage extends StatefulWidget {
+  final String imageUrl;
+  final BoxFit fit;
+  final double? width;
+  final double? height;
+  final int? cacheWidth;
+  final FilterQuality filterQuality;
+  final Widget placeholder;
+  final bool showPlaceholderWhileLoading;
+  final bool enableFadeIn;
+  final VoidCallback onError;
+
+  const _WebIndexedCachedNetworkImage({
+    required this.imageUrl,
+    required this.fit,
+    required this.width,
+    required this.height,
+    required this.cacheWidth,
+    required this.filterQuality,
+    required this.placeholder,
+    required this.showPlaceholderWhileLoading,
+    required this.enableFadeIn,
+    required this.onError,
+  });
+
+  @override
+  State<_WebIndexedCachedNetworkImage> createState() =>
+      _WebIndexedCachedNetworkImageState();
+}
+
+class _WebIndexedCachedNetworkImageState
+    extends State<_WebIndexedCachedNetworkImage> {
+  Uint8List? _bytes;
+  bool _isLoading = true;
+  bool _didNotifyError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _WebIndexedCachedNetworkImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _bytes = null;
+      _isLoading = true;
+      _didNotifyError = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _load();
+      });
+    }
+  }
+
+  Future<void> _load() async {
+    final cache = WebIndexedImageCache.instance;
+    final url = widget.imageUrl.trim();
+    if (url.isEmpty || !mounted) {
+      _notifyErrorOnce();
+      return;
+    }
+
+    WebCachedImageRecord? cached;
+    try {
+      cached = await cache.get(url);
+    } catch (_) {
+      cached = null;
+    }
+
+    if (!mounted) return;
+
+    if (cached != null) {
+      final cachedBytes = cached.bytes;
+      setState(() {
+        _bytes = cachedBytes;
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 &&
+          response.statusCode < 300 &&
+          response.bodyBytes.isNotEmpty) {
+        final bodyBytes = response.bodyBytes;
+        await cache.put(
+          url,
+          bodyBytes,
+          etag: response.headers['etag'],
+          lastModified: response.headers['last-modified'],
+          ttl: _resolveTtl(response.headers),
+        );
+
+        setState(() {
+          _bytes = bodyBytes;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      _notifyErrorOnce();
+    } catch (_) {
+      if (!mounted) return;
+      _notifyErrorOnce();
+    }
+  }
+
+  Duration _resolveTtl(Map<String, String> headers) {
+    final cacheControl = headers['cache-control']?.toLowerCase() ?? '';
+    if (cacheControl.contains('no-store')) {
+      return const Duration(minutes: 5);
+    }
+
+    final maxAgeMatch = RegExp(r'max-age=(\d+)').firstMatch(cacheControl);
+    if (maxAgeMatch != null) {
+      final parsed = int.tryParse(maxAgeMatch.group(1) ?? '');
+      if (parsed != null && parsed > 0) {
+        final bounded = parsed.clamp(60, 604800);
+        return Duration(seconds: bounded);
+      }
+    }
+
+    return const Duration(hours: 24);
+  }
+
+  void _notifyErrorOnce() {
+    if (_didNotifyError) return;
+    _didNotifyError = true;
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onError();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = _bytes;
+
+    if (data == null) {
+      if (_isLoading && widget.showPlaceholderWhileLoading) {
+        return widget.placeholder;
+      }
+      return widget.placeholder;
+    }
+
+    return Image.memory(
+      data,
+      width: widget.width,
+      height: widget.height,
+      fit: widget.fit,
+      cacheWidth: widget.cacheWidth,
+      filterQuality: widget.filterQuality,
+      gaplessPlayback: true,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (!widget.enableFadeIn || wasSynchronouslyLoaded) {
+          return child;
+        }
+        return AnimatedOpacity(
+          opacity: frame == null ? 0 : 1,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          child: child,
+        );
+      },
+      errorBuilder: (_, __, ___) {
+        _notifyErrorOnce();
+        return widget.placeholder;
+      },
+    );
+  }
 }

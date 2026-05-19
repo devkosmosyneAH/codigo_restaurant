@@ -81,6 +81,7 @@ dependencies:
   # Selección de archivos/imágenes
   file_picker: ^8.0.7
   image: ^4.5.4
+  idb_shim: ^2.6.6+1
 
   # Hashing seguro de PINs
   crypto: ^3.0.6

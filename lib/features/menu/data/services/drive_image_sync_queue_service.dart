@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/sync/sync_manager.dart';
 import 'package:restaurant_app/core/sync/sync_record.dart';
+import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
 import 'package:restaurant_app/features/menu/data/services/menu_realtime_database_service.dart';
 
 class DriveQueueProcessResult {
@@ -34,21 +36,41 @@ class DriveImageSyncQueueService {
   static const String localQueueTable = '_local_drive_ops';
   static const String _deleteImageKind = 'delete_image';
   static const String _uploadImageKind = 'upload_image';
+  static const Duration _autoCleanupMinInterval = Duration(hours: 4);
+  static const Duration _autoCleanupMinAge = Duration(hours: 8);
+  static const int _autoCleanupMaxDeletes = 25;
 
   final SyncManager _syncManager;
   final DriveMenuConnectionService _driveService;
   final DatabaseHelper _dbHelper;
   final MenuRealtimeDatabaseService _menuRealtimeDb;
+  final TenantContext _tenantContext;
+  final MenuSyncDiagnosticsService? _diagnosticsService;
+
+  DateTime? _lastAutoCleanupAt;
 
   DriveImageSyncQueueService({
     required SyncManager syncManager,
     required DriveMenuConnectionService driveService,
     required DatabaseHelper dbHelper,
     required MenuRealtimeDatabaseService menuRealtimeDb,
+    required TenantContext tenantContext,
+    MenuSyncDiagnosticsService? diagnosticsService,
   }) : _syncManager = syncManager,
        _driveService = driveService,
        _dbHelper = dbHelper,
-       _menuRealtimeDb = menuRealtimeDb;
+       _menuRealtimeDb = menuRealtimeDb,
+       _tenantContext = tenantContext,
+       _diagnosticsService = diagnosticsService;
+
+  Future<int> countPendingOperations() async {
+    final pending = await _syncManager.obtenerPendientesPorTabla(
+      localQueueTable,
+    );
+    final count = pending.length;
+    _diagnosticsService?.updatePendingQueueCount(count);
+    return count;
+  }
 
   Future<void> enqueueDeleteImage({
     required String restaurantId,
@@ -70,6 +92,8 @@ class DriveImageSyncQueueService {
       restaurantId: restaurantId,
       datos: {'kind': _deleteImageKind, 'file_id': normalizedFileId},
     );
+
+    await countPendingOperations();
   }
 
   Future<void> enqueueUploadImage({
@@ -118,6 +142,8 @@ class DriveImageSyncQueueService {
             : previousFileId,
       },
     );
+
+    await countPendingOperations();
   }
 
   Future<DriveQueueProcessResult> processPendingOperations({
@@ -127,7 +153,10 @@ class DriveImageSyncQueueService {
     final pending = await _syncManager.obtenerPendientesPorTabla(
       localQueueTable,
     );
+    _diagnosticsService?.updatePendingQueueCount(pending.length);
+
     if (pending.isEmpty) {
+      await _runAutoCleanupIfDue(allowInteractiveSignIn: false);
       return const DriveQueueProcessResult(
         totalQueued: 0,
         processed: 0,
@@ -143,6 +172,10 @@ class DriveImageSyncQueueService {
     }
 
     if (!signedIn) {
+      _diagnosticsService?.updateDriveStatus(
+        connected: false,
+        accountEmail: _driveService.currentEmail,
+      );
       return DriveQueueProcessResult(
         totalQueued: pending.length,
         processed: 0,
@@ -177,6 +210,9 @@ class DriveImageSyncQueueService {
     }
 
     final deferred = pending.length - processed;
+    await countPendingOperations();
+    await _runAutoCleanupIfDue(allowInteractiveSignIn: allowInteractiveSignIn);
+
     return DriveQueueProcessResult(
       totalQueued: pending.length,
       processed: processed,
@@ -195,6 +231,88 @@ class DriveImageSyncQueueService {
       allowInteractiveSignIn: allowInteractiveSignIn,
       maxToProcess: maxToProcess,
     );
+  }
+
+  Future<DriveCleanupResult> cleanupOrphanedDriveImages({
+    String? restaurantId,
+    String? userId,
+    bool dryRun = false,
+    bool allowInteractiveSignIn = false,
+    int maxDeletes = 25,
+    Duration minAge = const Duration(hours: 6),
+  }) async {
+    final effectiveRestaurantId = (restaurantId?.trim().isNotEmpty ?? false)
+        ? restaurantId!.trim()
+        : _tenantContext.restaurantId.trim();
+    final effectiveUserId = (userId?.trim().isNotEmpty ?? false)
+        ? userId!.trim()
+        : (_tenantContext.userId ?? 'system');
+
+    if (effectiveRestaurantId.isEmpty) {
+      final result = DriveCleanupResult(
+        scanned: 0,
+        orphanCandidates: 0,
+        deleted: 0,
+        dryRun: dryRun,
+        skipped: true,
+        message: 'No hay restaurant_id activo para limpiar huérfanas.',
+      );
+      _diagnosticsService?.recordCleanup(
+        scanned: result.scanned,
+        orphanCandidates: result.orphanCandidates,
+        deleted: result.deleted,
+        dryRun: result.dryRun,
+        message: result.message,
+      );
+      return result;
+    }
+
+    var signedIn = await _driveService.restoreSessionSilently();
+    if (!signedIn && allowInteractiveSignIn) {
+      signedIn = await _driveService.signIn();
+    }
+
+    if (!signedIn) {
+      final result = DriveCleanupResult(
+        scanned: 0,
+        orphanCandidates: 0,
+        deleted: 0,
+        dryRun: dryRun,
+        skipped: true,
+        message: 'Limpieza pendiente: sesión Drive no disponible.',
+      );
+      _diagnosticsService?.recordCleanup(
+        scanned: result.scanned,
+        orphanCandidates: result.orphanCandidates,
+        deleted: result.deleted,
+        dryRun: result.dryRun,
+        message: result.message,
+      );
+      return result;
+    }
+
+    final referencedIds = await _loadReferencedDriveFileIds(
+      restaurantId: effectiveRestaurantId,
+    );
+
+    final result = await _driveService.cleanupOrphanedImages(
+      restaurantId: effectiveRestaurantId,
+      userId: effectiveUserId,
+      referencedFileIds: referencedIds,
+      minAge: minAge,
+      maxDeletes: maxDeletes,
+      dryRun: dryRun,
+    );
+
+    _diagnosticsService?.recordCleanup(
+      scanned: result.scanned,
+      orphanCandidates: result.orphanCandidates,
+      deleted: result.deleted,
+      dryRun: result.dryRun,
+      message: result.message,
+    );
+
+    return result;
   }
 
   Future<_DriveQueueOperationOutcome> _processDeleteRecord(
@@ -339,5 +457,48 @@ class DriveImageSyncQueueService {
     );
 
     return true;
+  }
+
+  Future<void> _runAutoCleanupIfDue({
+    required bool allowInteractiveSignIn,
+  }) async {
+    final now = DateTime.now();
+    final lastRun = _lastAutoCleanupAt;
+    if (lastRun != null && now.difference(lastRun) < _autoCleanupMinInterval) {
+      return;
+    }
+
+    _lastAutoCleanupAt = now;
+    try {
+      await cleanupOrphanedDriveImages(
+        allowInteractiveSignIn: allowInteractiveSignIn,
+        maxDeletes: _autoCleanupMaxDeletes,
+        minAge: _autoCleanupMinAge,
+      );
+    } catch (_) {
+      // No interrumpe el procesamiento de la cola por errores de mantenimiento.
+    }
+  }
+
+  Future<Set<String>> _loadReferencedDriveFileIds({
+    required String restaurantId,
+  }) async {
+    final rows = await _dbHelper.rawQuery(
+      'SELECT DISTINCT drive_file_id '
+      'FROM productos '
+      'WHERE restaurant_id = ? '
+      'AND drive_file_id IS NOT NULL '
+      "AND TRIM(drive_file_id) <> ''",
+      [restaurantId],
+    );
+
+    final ids = <String>{};
+    for (final row in rows) {
+      final raw = row['drive_file_id']?.toString().trim() ?? '';
+      if (raw.isNotEmpty) {
+        ids.add(raw);
+      }
+    }
+    return ids;
   }
 }

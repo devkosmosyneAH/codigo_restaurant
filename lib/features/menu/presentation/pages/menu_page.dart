@@ -8,6 +8,7 @@ import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queu
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/categoria_form_dialog.dart';
+import 'package:restaurant_app/features/menu/presentation/widgets/menu_sync_diagnostics_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_card.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_form_dialog.dart';
 
@@ -245,6 +246,10 @@ class _MenuPageState extends ConsumerState<MenuPage>
     context.push(AppRouter.menuPublico);
   }
 
+  Future<void> _openSyncDiagnostics() {
+    return MenuSyncDiagnosticsDialog.show(context);
+  }
+
   // ── Build ──────────────────────────────────────────────────────
 
   @override
@@ -302,6 +307,15 @@ class _MenuPageState extends ConsumerState<MenuPage>
                                 size: 18,
                               ),
                               label: const Text('Vista cliente'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: _openSyncDiagnostics,
+                              icon: const Icon(
+                                Icons.health_and_safety_outlined,
+                                size: 18,
+                              ),
+                              label: const Text('Diagnóstico'),
                             ),
                             const SizedBox(width: 8),
                             // Botón nueva categoría
