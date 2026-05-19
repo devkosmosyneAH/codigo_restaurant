@@ -29,6 +29,7 @@ class HybridSyncOrchestrator {
        _beforePushHook = beforePushHook;
 
   static const Duration _pulseInterval = Duration(seconds: 30);
+  static const Duration _localChangeDebounce = Duration(milliseconds: 700);
   static const int _pushBatchSize = 100;
 
   static const List<String> _realtimeTables = [
@@ -58,7 +59,9 @@ class HybridSyncOrchestrator {
   final Map<String, Set<String>> _tableColumnsCache = {};
 
   Timer? _pulseTimer;
+  Timer? _localChangeTimer;
   StreamSubscription<dynamic>? _connectivitySub;
+  StreamSubscription<void>? _pendingChangesSub;
 
   bool _started = false;
   bool _online = false;
@@ -100,6 +103,11 @@ class HybridSyncOrchestrator {
       _connectivitySub = null;
     }
 
+    _pendingChangesSub = _syncManager.onPendingChanges.listen((_) {
+      if (!_online) return;
+      _scheduleLocalChangeSync();
+    });
+
     _pulseTimer = Timer.periodic(
       _pulseInterval,
       (_) => unawaited(_runCycle(reason: 'pulse')),
@@ -112,8 +120,14 @@ class HybridSyncOrchestrator {
     _pulseTimer?.cancel();
     _pulseTimer = null;
 
+    _localChangeTimer?.cancel();
+    _localChangeTimer = null;
+
     await _connectivitySub?.cancel();
     _connectivitySub = null;
+
+    await _pendingChangesSub?.cancel();
+    _pendingChangesSub = null;
 
     _started = false;
   }
@@ -146,6 +160,13 @@ class HybridSyncOrchestrator {
     } finally {
       _syncInProgress = false;
     }
+  }
+
+  void _scheduleLocalChangeSync() {
+    _localChangeTimer?.cancel();
+    _localChangeTimer = Timer(_localChangeDebounce, () {
+      unawaited(_runCycle(reason: 'local-change'));
+    });
   }
 
   Future<void> _pushPendingRecords() async {

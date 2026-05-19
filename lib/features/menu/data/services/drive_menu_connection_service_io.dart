@@ -106,6 +106,7 @@ class DriveMenuConnectionService {
        _uuid = uuid ?? const Uuid();
 
   GoogleSignInAccount? _currentUser;
+  String? _lastAuthError;
 
   bool get isSignedIn => _currentUser != null || _desktopAuthClient != null;
   String? get currentEmail =>
@@ -131,7 +132,8 @@ class DriveMenuConnectionService {
       accountEmail: currentEmail,
       error: desktopSignedIn
           ? null
-          : 'No se pudo autenticar la sesión de Google Drive.',
+          : (_lastAuthError ??
+                'No se pudo autenticar la sesión de Google Drive.'),
     );
     return desktopSignedIn;
   }
@@ -151,6 +153,7 @@ class DriveMenuConnectionService {
     _diagnosticsService.updateDriveStatus(
       connected: desktopRestored,
       accountEmail: currentEmail,
+      error: desktopRestored ? null : _lastAuthError,
     );
     return desktopRestored;
   }
@@ -444,7 +447,11 @@ class DriveMenuConnectionService {
     GoogleSignInAccount? account;
     try {
       account = _currentUser ?? await _googleSignIn.signInSilently();
-    } catch (_) {
+    } catch (e, st) {
+      final message = 'No se pudo restaurar sesión Google Sign-In: $e';
+      _lastAuthError = message;
+      _diagnosticsService.recordError(message);
+      debugPrint('Drive IO restoreSessionSilently failed: $e\n$st');
       account = _currentUser;
     }
 
@@ -489,8 +496,19 @@ class DriveMenuConnectionService {
       } else {
         _currentUser = await _googleSignIn.signInSilently();
       }
+      if (_currentUser == null) {
+        _lastAuthError =
+            'No se obtuvo una cuenta Google activa para Drive (cancelado o bloqueado).';
+        return false;
+      }
+      _lastAuthError = null;
       return _currentUser != null;
-    } catch (_) {
+    } catch (e, st) {
+      _lastAuthError = 'Error en Google Sign-In para Drive: $e';
+      _diagnosticsService.recordError(_lastAuthError!);
+      debugPrint(
+        'Drive IO GoogleSignIn failed (interactive: $interactive): $e\n$st',
+      );
       return false;
     }
   }
@@ -506,12 +524,19 @@ class DriveMenuConnectionService {
       _desktopAuthClient = await auth_io.clientViaApplicationDefaultCredentials(
         scopes: const [drive.DriveApi.driveFileScope],
       );
+      _lastAuthError = null;
       return true;
-    } catch (_) {
+    } catch (e, st) {
+      _lastAuthError = 'No se pudo usar credenciales ADC para Drive: $e';
+      debugPrint('Drive IO ADC auth failed: $e\n$st');
       // Si no hay ADC/gcloud, continua con el modo interactivo cuando aplique.
     }
 
     if (!interactive || AppEnvironment.googleClientId.isEmpty) {
+      if (AppEnvironment.googleClientId.isEmpty) {
+        _lastAuthError =
+            'GOOGLE_CLIENT_ID no está configurado para OAuth interactivo.';
+      }
       return false;
     }
 
@@ -521,8 +546,13 @@ class DriveMenuConnectionService {
         const [drive.DriveApi.driveFileScope],
         _openConsentUri,
       );
+      _lastAuthError = null;
       return true;
-    } catch (_) {
+    } catch (e, st) {
+      _lastAuthError =
+          'Error en flujo OAuth de escritorio para Google Drive: $e';
+      _diagnosticsService.recordError(_lastAuthError!);
+      debugPrint('Drive IO user-consent auth failed: $e\n$st');
       return false;
     }
   }

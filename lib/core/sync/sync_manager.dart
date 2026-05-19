@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
@@ -15,9 +16,14 @@ import 'package:restaurant_app/core/sync/sync_record.dart';
 class SyncManager {
   final DatabaseHelper _dbHelper;
   static const _uuid = Uuid();
+  final StreamController<void> _pendingChangesController =
+      StreamController<void>.broadcast();
 
   SyncManager({DatabaseHelper? dbHelper})
     : _dbHelper = dbHelper ?? DatabaseHelper.instance;
+
+  /// Emite un evento cada vez que cambia el estado de pendientes en sync_log.
+  Stream<void> get onPendingChanges => _pendingChangesController.stream;
 
   /// Registra una operación para futura sincronización.
   Future<void> registrarOperacion({
@@ -62,6 +68,7 @@ class SyncManager {
             where: 'id = ?',
             whereArgs: [previo.id],
           );
+          _notifyPendingChanged();
           return;
         }
 
@@ -85,6 +92,7 @@ class SyncManager {
           where: 'id = ?',
           whereArgs: [previo.id],
         );
+        _notifyPendingChanged();
         return;
       }
     }
@@ -101,6 +109,7 @@ class SyncManager {
     );
 
     await _dbHelper.insert('sync_log', record.toMap());
+    _notifyPendingChanged();
   }
 
   /// Obtiene todos los registros pendientes de sincronización.
@@ -166,6 +175,7 @@ class SyncManager {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyPendingChanged();
   }
 
   /// Incrementa el contador de intentos de un registro.
@@ -356,5 +366,10 @@ class SyncManager {
 
     final dueAt = record.updatedAt.add(Duration(seconds: seconds));
     return !now.isBefore(dueAt);
+  }
+
+  void _notifyPendingChanged() {
+    if (_pendingChangesController.isClosed) return;
+    _pendingChangesController.add(null);
   }
 }

@@ -9,6 +9,7 @@ import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
 import 'package:restaurant_app/features/menu/domain/entities/categoria.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
 import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
@@ -163,6 +164,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 
     setState(() => _checkingDriveSession = true);
     final driveService = sl<DriveMenuConnectionService>();
+    final diagnostics = sl<MenuSyncDiagnosticsService>();
     final signedIn = await driveService.signIn();
 
     if (!mounted) return;
@@ -177,7 +179,11 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
         content: Text(
           signedIn
               ? 'Google Drive conectado correctamente.'
-              : 'No se pudo conectar con Google Drive.',
+              : (diagnostics.snapshot.lastError == null ||
+                    diagnostics.snapshot.lastError!.trim().isEmpty)
+              ? 'No se pudo conectar con Google Drive.'
+              : 'No se pudo conectar con Google Drive: '
+                    '${diagnostics.snapshot.lastError}',
         ),
       ),
     );
@@ -583,26 +589,26 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     String? driveFileId = widget.producto?.driveFileId;
     String? drivePublicUrl = widget.producto?.drivePublicUrl;
     String? imagenLocalCachePath = widget.producto?.imagenLocalCachePath;
+    String? driveWarning;
 
     try {
       final driveService = sl<DriveMenuConnectionService>();
       final driveQueue = sl<DriveImageSyncQueueService>();
+      final diagnostics = sl<MenuSyncDiagnosticsService>();
 
       // Si la imagen proviene del selector local, se sube a Drive para
       // garantizar acceso público sin autenticación (QR / página pública).
       if (_selectedImageBytes != null && _selectedImageMimeType != null) {
-        final fallbackDataUri =
-            (_selectedImageData != null &&
-                _selectedImageData!.trim().isNotEmpty)
-            ? _selectedImageData!.trim()
-            : 'data:${_selectedImageMimeType!};base64,${base64Encode(_selectedImageBytes!)}';
-
         var signedIn = _driveSessionReady;
         var uploadedToDrive = false;
 
         if (AppEnvironment.isDriveConfigured && _supportsDriveUpload) {
           if (!signedIn) {
             signedIn = await driveService.signIn();
+            if (!signedIn) {
+              driveWarning = 'No se pudo iniciar sesión OAuth en Google Drive.';
+              diagnostics.recordError(driveWarning);
+            }
           }
           _driveSessionReady = signedIn;
           _driveOwnerEmail = driveService.currentEmail;
@@ -635,38 +641,23 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
               drivePublicUrl = upload.publicUrl;
               imagenLocalCachePath = upload.localCachePath;
               uploadedToDrive = true;
-            } catch (_) {
+            } catch (e, st) {
               uploadedToDrive = false;
+              driveWarning = 'Falló la subida de imagen a Drive: $e';
+              diagnostics.recordError(driveWarning);
+              debugPrint(
+                'Drive upload error for producto $productoId: $e\n$st',
+              );
             }
           }
         }
 
         if (!uploadedToDrive) {
+          final canQueueDriveUpload =
+              AppEnvironment.isDriveConfigured && _supportsDriveUpload;
           final previousDriveFileId = driveFileId;
 
-          if (previousDriveFileId != null &&
-              previousDriveFileId.isNotEmpty &&
-              AppEnvironment.isDriveConfigured) {
-            var deleted = false;
-            if (signedIn) {
-              deleted = await driveService.tryDeleteProductImage(
-                previousDriveFileId,
-              );
-            }
-            if (!deleted) {
-              await driveQueue.enqueueDeleteImage(
-                restaurantId: restaurantId,
-                fileId: previousDriveFileId,
-              );
-            }
-          }
-
-          imagenUrl = fallbackDataUri;
-          driveFileId = null;
-          drivePublicUrl = null;
-          imagenLocalCachePath = null;
-
-          if (AppEnvironment.isDriveConfigured && _supportsDriveUpload) {
+          if (canQueueDriveUpload) {
             await driveQueue.enqueueUploadImage(
               restaurantId: restaurantId,
               userId: userId,
@@ -676,6 +667,33 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
               fileExtension: _selectedImageExtension ?? 'jpg',
               previousDriveFileId: previousDriveFileId,
             );
+
+            final queueResult = await driveQueue.processPendingOperations(
+              allowInteractiveSignIn: true,
+              maxToProcess: 2,
+            );
+
+            if (queueResult.succeeded == 0) {
+              final pendingCount = await driveQueue.countPendingOperations();
+              final baseWarning =
+                  driveWarning ??
+                  'La imagen quedó en cola de Drive y se reintentará automáticamente.';
+              driveWarning = '$baseWarning Pendientes: $pendingCount.';
+              diagnostics.recordError(driveWarning);
+            }
+          } else {
+            throw StateError(
+              'Drive no está disponible para subir la imagen seleccionada.',
+            );
+          }
+
+          final previousImagenUrl = widget.producto?.imagenUrl?.trim();
+          if (previousImagenUrl != null &&
+              previousImagenUrl.isNotEmpty &&
+              !previousImagenUrl.startsWith('data:')) {
+            imagenUrl = previousImagenUrl;
+          } else {
+            imagenUrl = drivePublicUrl;
           }
         }
       }
@@ -755,16 +773,21 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       );
 
       if (!mounted) return;
+      if (driveWarning != null && driveWarning.trim().isNotEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(driveWarning)));
+      }
       Navigator.of(context).pop(producto);
-    } catch (_) {
+    } catch (e, st) {
+      final diagnostics = sl<MenuSyncDiagnosticsService>();
+      final message = 'No se pudo guardar producto/imagen en Drive: $e';
+      diagnostics.recordError(message);
+      debugPrint('$message\n$st');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No se pudo subir la imagen a Drive. Intenta nuevamente.',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) {
         setState(() => _submitting = false);

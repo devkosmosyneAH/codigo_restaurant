@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/sync/sync_manager.dart';
 import 'package:restaurant_app/core/sync/sync_record.dart';
@@ -175,6 +176,10 @@ class DriveImageSyncQueueService {
       _diagnosticsService?.updateDriveStatus(
         connected: false,
         accountEmail: _driveService.currentEmail,
+      );
+      _diagnosticsService?.recordError(
+        'No hay sesión Drive activa para procesar la cola '
+        '(${pending.length} pendiente(s)).',
       );
       return DriveQueueProcessResult(
         totalQueued: pending.length,
@@ -352,13 +357,20 @@ class DriveImageSyncQueueService {
         productoId.isEmpty ||
         mimeType.isEmpty ||
         encodedBytes.isEmpty) {
+      _diagnosticsService?.recordError(
+        'Registro de cola de Drive incompleto para producto "$productoId".',
+      );
       return _DriveQueueOperationOutcome.drop;
     }
 
     List<int> bytes;
     try {
       bytes = base64Decode(encodedBytes);
-    } catch (_) {
+    } catch (e, st) {
+      _diagnosticsService?.recordError(
+        'Payload base64 inválido en cola Drive para "$productoId": $e',
+      );
+      debugPrint('Drive queue decode error for $productoId: $e\n$st');
       return _DriveQueueOperationOutcome.drop;
     }
     if (bytes.isEmpty) return _DriveQueueOperationOutcome.drop;
@@ -373,7 +385,11 @@ class DriveImageSyncQueueService {
         mimeType: mimeType,
         fileExtension: fileExtension,
       );
-    } catch (_) {
+    } catch (e, st) {
+      _diagnosticsService?.recordError(
+        'Error subiendo imagen pendiente de "$productoId" a Drive: $e',
+      );
+      debugPrint('Drive queue upload error for $productoId: $e\n$st');
       return _DriveQueueOperationOutcome.retryLater;
     }
 
@@ -404,7 +420,11 @@ class DriveImageSyncQueueService {
         return _DriveQueueOperationOutcome.drop;
       }
       return _DriveQueueOperationOutcome.success;
-    } catch (_) {
+    } catch (e, st) {
+      _diagnosticsService?.recordError(
+        'Error aplicando imagen subida al producto "$productoId": $e',
+      );
+      debugPrint('Drive queue apply error for $productoId: $e\n$st');
       await _driveService.tryDeleteProductImage(upload.fileId);
       return _DriveQueueOperationOutcome.retryLater;
     }
@@ -475,7 +495,9 @@ class DriveImageSyncQueueService {
         maxDeletes: _autoCleanupMaxDeletes,
         minAge: _autoCleanupMinAge,
       );
-    } catch (_) {
+    } catch (e, st) {
+      _diagnosticsService?.recordError('Error en auto-cleanup de Drive: $e');
+      debugPrint('Drive auto-cleanup error: $e\n$st');
       // No interrumpe el procesamiento de la cola por errores de mantenimiento.
     }
   }

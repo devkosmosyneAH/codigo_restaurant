@@ -19,6 +19,10 @@ class MenuRealtimeDatabaseService {
   static const Map<String, String> _jsonHeaders = {
     'Content-Type': 'application/json',
   };
+  static const Set<String> _localOnlyKeys = {
+    'imagen_local_cache_path',
+    'image_base64',
+  };
 
   final http.Client _httpClient;
   final MenuSyncDiagnosticsService? _diagnosticsService;
@@ -136,15 +140,95 @@ class MenuRealtimeDatabaseService {
       final value = entry.value;
       if (value == null) continue;
 
-      if (value is DateTime) {
-        output[entry.key] = value.toIso8601String();
-        continue;
-      }
+      final sanitized = _sanitizeValue(entry.key, value);
+      if (identical(sanitized, _dropValue)) continue;
+      output[entry.key] = sanitized;
+    }
 
-      output[entry.key] = value;
+    final driveUrl = output['drive_public_url'];
+    if (driveUrl is String && !_isPublicUrl(driveUrl)) {
+      output.remove('drive_public_url');
+    }
+
+    final driveFileId = output['drive_file_id'];
+    if (driveFileId is String && driveFileId.trim().isEmpty) {
+      output.remove('drive_file_id');
+    }
+
+    final imageUrl = output['imagen_url'];
+    if (imageUrl is String && !_isPublicUrl(imageUrl)) {
+      if (driveUrl is String && _isPublicUrl(driveUrl)) {
+        output['imagen_url'] = driveUrl;
+      } else {
+        output.remove('imagen_url');
+      }
+    }
+
+    if (!output.containsKey('imagen_url') &&
+        driveUrl is String &&
+        _isPublicUrl(driveUrl)) {
+      output['imagen_url'] = driveUrl;
     }
 
     return output;
+  }
+
+  static const Object _dropValue = Object();
+
+  Object _sanitizeValue(String key, dynamic value) {
+    if (_localOnlyKeys.contains(key)) {
+      return _dropValue;
+    }
+
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+
+    if (value is Map) {
+      final nested = <String, dynamic>{};
+      for (final entry in value.entries) {
+        final nestedKey = entry.key.toString();
+        final nestedValue = _sanitizeValue(nestedKey, entry.value);
+        if (identical(nestedValue, _dropValue)) continue;
+        nested[nestedKey] = nestedValue;
+      }
+      return nested;
+    }
+
+    if (value is List) {
+      final nested = <dynamic>[];
+      for (final item in value) {
+        final sanitized = _sanitizeValue(key, item);
+        if (identical(sanitized, _dropValue)) continue;
+        nested.add(sanitized);
+      }
+      return nested;
+    }
+
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) {
+        return value;
+      }
+      if (_isDataUri(trimmed)) {
+        return _dropValue;
+      }
+      return value;
+    }
+
+    return value;
+  }
+
+  bool _isDataUri(String value) {
+    return value.toLowerCase().startsWith('data:');
+  }
+
+  bool _isPublicUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null) return false;
+    return uri.hasScheme &&
+        (uri.scheme.toLowerCase() == 'https' ||
+            uri.scheme.toLowerCase() == 'http');
   }
 }
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
@@ -99,15 +100,19 @@ class DriveMenuConnectionService {
         connected: connected,
         accountEmail: currentEmail,
         tokenExpiresAt: await _tryResolveTokenExpiry(),
-        error: connected ? null : 'No se pudo iniciar sesión en Google Drive.',
+        error: connected
+            ? null
+            : 'No se pudo iniciar sesión en Google Drive. '
+                  'Revisa OAuth Client ID y Authorized JavaScript origins.',
       );
       return connected;
-    } catch (e) {
+    } catch (e, st) {
       _diagnosticsService.updateDriveStatus(
         connected: false,
         accountEmail: currentEmail,
         error: 'Error de autenticación Drive: $e',
       );
+      debugPrint('Drive web signIn failed: $e\n$st');
       return false;
     }
   }
@@ -122,12 +127,13 @@ class DriveMenuConnectionService {
         tokenExpiresAt: await _tryResolveTokenExpiry(),
       );
       return connected;
-    } catch (e) {
+    } catch (e, st) {
       _diagnosticsService.updateDriveStatus(
         connected: false,
         accountEmail: currentEmail,
         error: 'No se pudo restaurar sesión Drive: $e',
       );
+      debugPrint('Drive web restoreSessionSilently failed: $e\n$st');
       return false;
     }
   }
@@ -385,7 +391,20 @@ class DriveMenuConnectionService {
   }
 
   Future<drive.DriveApi> _getDriveApi() async {
-    final account = _currentUser ?? await _googleSignIn.signInSilently();
+    GoogleSignInAccount? account;
+    try {
+      account = _currentUser ?? await _googleSignIn.signInSilently();
+    } catch (e, st) {
+      final message = 'Error recuperando sesión OAuth Web para Drive: $e';
+      _diagnosticsService.updateDriveStatus(
+        connected: false,
+        accountEmail: currentEmail,
+        error: message,
+      );
+      debugPrint('$message\n$st');
+      throw StateError(message);
+    }
+
     if (account == null) {
       _diagnosticsService.updateDriveStatus(
         connected: false,
@@ -403,8 +422,19 @@ class DriveMenuConnectionService {
       accountEmail: currentEmail,
       tokenExpiresAt: await _tryResolveTokenExpiry(),
     );
-    final authHeaders = await account.authHeaders;
-    return drive.DriveApi(_AuthClient(authHeaders));
+    try {
+      final authHeaders = await account.authHeaders;
+      return drive.DriveApi(_AuthClient(authHeaders));
+    } catch (e, st) {
+      final message = 'No se pudieron obtener headers OAuth para Drive Web: $e';
+      _diagnosticsService.updateDriveStatus(
+        connected: false,
+        accountEmail: currentEmail,
+        error: message,
+      );
+      debugPrint('$message\n$st');
+      throw StateError(message);
+    }
   }
 
   Future<DateTime?> _tryResolveTokenExpiry() async {
