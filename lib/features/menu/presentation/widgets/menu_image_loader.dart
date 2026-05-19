@@ -39,6 +39,26 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
   List<_ImageCandidate> _candidates = const [];
   int _activeIndex = 0;
 
+  /// Convierte URLs de Google Drive a un formato servido por usercontent
+  /// para evitar bloqueos CORS en Flutter Web.
+  String _fixGoogleDriveUrl(String url) {
+    if (url.isEmpty) return url;
+
+    if (url.contains('lh3.googleusercontent.com/d/')) {
+      return url;
+    }
+
+    final regExp = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
+    final match = regExp.firstMatch(url);
+
+    if (match != null && match.groupCount > 0) {
+      final fileId = match.group(1)!;
+      return 'https://lh3.googleusercontent.com/d/$fileId';
+    }
+
+    return url;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -117,10 +137,11 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
     }
 
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      final fixedUrl = _fixGoogleDriveUrl(raw);
       candidates.add(
         _ImageCandidate(
-          key: '$prefix:net:$raw',
-          provider: _resized(NetworkImage(raw)),
+          key: '$prefix:net:$fixedUrl',
+          provider: _resized(NetworkImage(fixedUrl)),
         ),
       );
       return;

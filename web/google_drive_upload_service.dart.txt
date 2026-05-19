@@ -1,0 +1,336 @@
+// ignore_for_file: avoid_web_libraries_in_flutter
+import 'dart:async';
+import 'dart:typed_data';
+import 'dart:html' as html;
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show File;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'app_config.dart';
+import 'google_auth_web.dart';
+
+/// 📤 Servicio para subir imágenes directamente a Google Drive
+/// Usa Google Identity Services (GIS) para autenticación web
+/// Implementación compatible con GitHub Pages
+class GoogleDriveUploadService {
+  static const String _driveApiUrl =
+      'https://www.googleapis.com/drive/v3/files';
+  static const String _uploadApiUrl =
+      'https://www.googleapis.com/upload/drive/v3/files';
+  static const String _driveViewUrl =
+      'https://drive.usercontent.google.com/download?id=';
+
+  /// Busca o crea una carpeta en Google Drive
+  static Future<String> _findOrCreateFolder(
+    String folderName,
+    String parentId,
+    String accessToken,
+  ) async {
+    try {
+      // Buscar carpeta existente
+      final query = Uri.encodeComponent(
+        "name='$folderName' and '$parentId' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+      );
+
+      final searchUrl = Uri.parse(
+        '$_driveApiUrl?q=$query&spaces=drive&fields=files(id,name)',
+      );
+
+      final searchResponse = await http.get(
+        searchUrl,
+        headers: {'Authorization': 'Bearer $accessToken'},
+      );
+
+      if (searchResponse.statusCode == 200) {
+        final data = jsonDecode(searchResponse.body);
+        final files = data['files'] as List?;
+
+        if (files != null && files.isNotEmpty) {
+          return files.first['id'] as String;
+        }
+      }
+
+      // Crear carpeta si no existe
+      final createResponse = await http.post(
+        Uri.parse(_driveApiUrl),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'name': folderName,
+          'mimeType': 'application/vnd.google-apps.folder',
+          'parents': [parentId],
+        }),
+      );
+
+      if (createResponse.statusCode != 200 &&
+          createResponse.statusCode != 201) {
+        throw Exception('Error al crear carpeta: ${createResponse.body}');
+      }
+
+      final folderData = jsonDecode(createResponse.body);
+      final folderId = folderData['id'] as String;
+
+      // Hacer la carpeta pública
+      await http.post(
+        Uri.parse('$_driveApiUrl/$folderId/permissions'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'type': 'anyone', 'role': 'reader'}),
+      );
+
+      return folderId;
+    } catch (e) {
+      throw Exception('Error al crear carpeta en Drive: $e');
+    }
+  }
+
+  /// Pre-autentica al usuario antes de subir archivos
+  static Future<bool> preAuthenticate() async {
+    try {
+      await GoogleAuthWeb.requestAccessToken();
+      return true;
+    } catch (e) {
+      print('❌ Error en preAuthenticate: $e');
+      return false;
+    }
+  }
+
+  /// Verifica si el usuario ya está autenticado
+  static bool isAuthenticated() {
+    return GoogleAuthWeb.isAuthenticated();
+  }
+
+  /// Cierra la sesión de Google
+  static Future<void> signOut() async {
+    try {
+      GoogleAuthWeb.clearToken();
+      print('✅ Sesión de Google cerrada');
+    } catch (e) {
+      print('⚠️ Error al cerrar sesión de Google: $e');
+    }
+  }
+
+  /// Limpia todas las instancias (útil para reiniciar el servicio)
+  static Future<void> dispose() async {
+    await signOut();
+    print('✅ Servicio de Google Drive limpiado');
+  }
+
+  /// Sube un archivo a Google Drive
+  static Future<String> uploadImage({
+    required String projectId,
+    required String type,
+    required PlatformFile file,
+    String? subFolder,
+  }) async {
+    try {
+      // Obtener token de acceso
+      final accessToken = await GoogleAuthWeb.getToken();
+
+      // Obtener bytes del archivo
+      Uint8List bytes;
+      if (kIsWeb && file.bytes != null) {
+        bytes = file.bytes!;
+      } else if (file.path != null) {
+        final ioFile = File(file.path!);
+        bytes = await ioFile.readAsBytes();
+      } else {
+        throw Exception('No se puede leer el archivo ${file.name}');
+      }
+
+      // Obtener carpeta raíz según el tipo
+      final rootFolderId = _getRootFolderIdByType(type);
+
+      // Crear carpeta del proyecto
+      final projectFolderId = await _findOrCreateFolder(
+        projectId,
+        rootFolderId,
+        accessToken,
+      );
+
+      // Si se especifica una subcarpeta, crearla dentro de la carpeta del proyecto
+      String targetFolderId = projectFolderId;
+      if (subFolder != null && subFolder.isNotEmpty) {
+        targetFolderId = await _findOrCreateFolder(
+          subFolder,
+          projectFolderId,
+          accessToken,
+        );
+      }
+
+      // Preparar nombre del archivo
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = '${timestamp}_${file.name}';
+
+      // Metadata del archivo
+      final metadata = {
+        'name': fileName,
+        'parents': [targetFolderId],
+        'mimeType': _getMimeType(file.name),
+      };
+
+      // Construir el body como multipart/related (requerido por Drive API para
+      // respetar el campo "parents" y guardar en la carpeta correcta).
+      // FormData usa multipart/form-data que Drive ignora el campo parents.
+      const boundary = 'flutter_drive_boundary';
+      final metadataBytes = utf8.encode(jsonEncode(metadata));
+      final mimeType = _getMimeType(file.name);
+
+      final bodyParts = <int>[];
+      bodyParts.addAll(
+        utf8.encode(
+          '--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n',
+        ),
+      );
+      bodyParts.addAll(metadataBytes);
+      bodyParts.addAll(utf8.encode('\r\n'));
+      bodyParts.addAll(
+        utf8.encode('--$boundary\r\nContent-Type: $mimeType\r\n\r\n'),
+      );
+      bodyParts.addAll(bytes);
+      bodyParts.addAll(utf8.encode('\r\n--$boundary--'));
+
+      final bodyUint8 = Uint8List.fromList(bodyParts);
+
+      // Subir con XHR usando multipart/related
+      final uri = '$_uploadApiUrl?uploadType=multipart&fields=id';
+      final completer = Completer<String>();
+
+      final xhr = html.HttpRequest();
+      xhr.open('POST', uri);
+      xhr.setRequestHeader('Authorization', 'Bearer $accessToken');
+      xhr.setRequestHeader(
+        'Content-Type',
+        'multipart/related; boundary=$boundary',
+      );
+
+      xhr.onLoad.listen((e) {
+        if (xhr.status == 200 || xhr.status == 201) {
+          completer.complete(xhr.responseText!);
+        } else {
+          completer.completeError(
+            Exception('Error al subir archivo: ${xhr.responseText}'),
+          );
+        }
+      });
+
+      xhr.onError.listen((e) {
+        completer.completeError(Exception('Error de red al subir archivo'));
+      });
+
+      xhr.send(bodyUint8);
+
+      final responseText = await completer.future;
+      final response = jsonDecode(responseText);
+
+      final fileId = response['id'] as String;
+
+      // Hacer el archivo público
+      await http.post(
+        Uri.parse('$_driveApiUrl/$fileId/permissions'),
+        headers: {
+          'Authorization': 'Bearer $accessToken',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'type': 'anyone', 'role': 'reader'}),
+      );
+
+      // Retornar URL pública directa (usando la constante como en React)
+      return '$_driveViewUrl$fileId';
+    } catch (e) {
+      throw Exception('Error al subir imagen a Google Drive: $e');
+    }
+  }
+
+  /// Sube múltiples imágenes a Google Drive
+  static Future<List<String>> uploadMultipleImages({
+    required String projectId,
+    required String type,
+    required List<PlatformFile> files,
+    Function(int current, int total)? onProgress,
+    String? subFolder,
+  }) async {
+    final List<String> urls = [];
+
+    for (int i = 0; i < files.length; i++) {
+      final file = files[i];
+
+      try {
+        final url = await uploadImage(
+          projectId: projectId,
+          type: type,
+          file: file,
+          subFolder: subFolder,
+        );
+
+        urls.add(url);
+
+        // Reportar progreso
+        if (onProgress != null) {
+          onProgress(i + 1, files.length);
+        }
+
+        // Pequeña pausa para evitar rate limiting
+        if (i < files.length - 1) {
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+      } catch (e) {
+        print('⚠️ Error al subir ${file.name}: $e');
+        rethrow; // Propagar el error para que se maneje en la UI
+      }
+    }
+
+    if (urls.isEmpty && files.isNotEmpty) {
+      throw Exception('No se pudo subir ninguna imagen');
+    }
+
+    return urls;
+  }
+
+  /// Obtiene el ID de la carpeta raíz según el tipo
+  static String _getRootFolderIdByType(String type) {
+    switch (type.toLowerCase()) {
+      case 'logo':
+        return AppConfig.googleDriveProjectsLogoFolderId;
+      case 'mobile':
+        return AppConfig.googleDriveProjectsMobileFolderId;
+      case 'web':
+        return AppConfig.googleDriveProjectsWebFolderId;
+      case 'certification':
+      case 'pdf':
+      case 'platform_logo':
+      case 'institution_logo':
+        return AppConfig.googleDriveCertificationsFolderId;
+      default:
+        throw Exception('Tipo de carpeta no válido: $type');
+    }
+  }
+
+  /// Determina el MIME type basado en la extensión
+  static String _getMimeType(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'svg':
+        return 'image/svg+xml';
+      case 'pdf':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+}

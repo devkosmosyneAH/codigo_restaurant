@@ -23,6 +23,9 @@
 class AppEnvironment {
   AppEnvironment._();
 
+  static const String _defaultRealtimeDatabaseUrl =
+      'https://restaura-a1e34-default-rtdb.firebaseio.com';
+
   // ── Drive folder id ─────────────────────────────────────────────────────
   static const String _driveRootFolderId = String.fromEnvironment(
     'DRIVE_ROOT_FOLDER_ID',
@@ -89,6 +92,32 @@ class AppEnvironment {
     defaultValue: '',
   );
 
+  // ── Realtime Database URL ───────────────────────────────────────────────
+  static const String _firebaseDatabaseUrl = String.fromEnvironment(
+    'FIREBASE_DATABASE_URL',
+    defaultValue: '',
+  );
+  static const String _realtimeDatabaseUrl = String.fromEnvironment(
+    'REALTIME_DATABASE_URL',
+    defaultValue: '',
+  );
+  static const String _firebaseRtdbUrl = String.fromEnvironment(
+    'FIREBASE_RTDB_URL',
+    defaultValue: '',
+  );
+  static const String _legacyFirebaseDatabaseUrl = String.fromEnvironment(
+    'REACT_APP_FIREBASE_DATABASE_URL',
+    defaultValue: '',
+  );
+  static const String _viteFirebaseDatabaseUrl = String.fromEnvironment(
+    'VITE_FIREBASE_DATABASE_URL',
+    defaultValue: '',
+  );
+  static const String _nextFirebaseDatabaseUrl = String.fromEnvironment(
+    'NEXT_PUBLIC_FIREBASE_DATABASE_URL',
+    defaultValue: '',
+  );
+
   /// ID de la carpeta raíz en Google Drive donde se crean las subcarpetas
   /// de cada restaurante (tenant).
   static String get driveRootFolderId {
@@ -121,7 +150,42 @@ class AppEnvironment {
     return '125358587893-k8t94o1m266010m2mm7kaip8agu8g27j.apps.googleusercontent.com';
   }
 
+  /// URL base de Firebase Realtime Database.
+  ///
+  /// Acepta varias variables para mantener compatibilidad con distintos
+  /// toolchains (.env de Flutter/React/Vite/Next).
+  static String get realtimeDatabaseUrl {
+    if (_firebaseDatabaseUrl.isNotEmpty) {
+      return _normalizeBaseUrl(_firebaseDatabaseUrl);
+    }
+    if (_realtimeDatabaseUrl.isNotEmpty) {
+      return _normalizeBaseUrl(_realtimeDatabaseUrl);
+    }
+    if (_firebaseRtdbUrl.isNotEmpty) {
+      return _normalizeBaseUrl(_firebaseRtdbUrl);
+    }
+    if (_viteFirebaseDatabaseUrl.isNotEmpty) {
+      return _normalizeBaseUrl(_viteFirebaseDatabaseUrl);
+    }
+    if (_nextFirebaseDatabaseUrl.isNotEmpty) {
+      return _normalizeBaseUrl(_nextFirebaseDatabaseUrl);
+    }
+    if (_legacyFirebaseDatabaseUrl.isNotEmpty) {
+      return _normalizeBaseUrl(_legacyFirebaseDatabaseUrl);
+    }
+    return _defaultRealtimeDatabaseUrl;
+  }
+
+  static bool get isRealtimeDatabaseConfigured =>
+      realtimeDatabaseUrl.isNotEmpty;
+
   /// True si el folder root está configurado y la integración con Drive
   /// puede operar.
   static bool get isDriveConfigured => driveRootFolderId.isNotEmpty;
+
+  static String _normalizeBaseUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+    return trimmed.replaceFirst(RegExp(r'/+$'), '');
+  }
 }

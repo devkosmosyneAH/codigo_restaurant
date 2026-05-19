@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/errors/exceptions.dart';
@@ -8,20 +10,24 @@ import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasou
 import 'package:restaurant_app/features/menu/data/models/categoria_model.dart';
 import 'package:restaurant_app/features/menu/data/models/producto_model.dart';
 import 'package:restaurant_app/features/menu/data/models/variante_model.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_realtime_database_service.dart';
 
 /// Implementación del datasource local de Menú usando SQLite.
 class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   final DatabaseHelper _dbHelper;
   final SyncManager _syncManager;
   final TenantContext _tenantContext;
+  final MenuRealtimeDatabaseService _menuRealtimeDb;
 
   MenuLocalDataSourceImpl({
     required DatabaseHelper dbHelper,
     required SyncManager syncManager,
     required TenantContext tenantContext,
+    required MenuRealtimeDatabaseService menuRealtimeDb,
   }) : _dbHelper = dbHelper,
        _syncManager = syncManager,
-       _tenantContext = tenantContext;
+       _tenantContext = tenantContext,
+       _menuRealtimeDb = menuRealtimeDb;
 
   static const _tableCategorias = 'categorias';
   static const _tableProductos = 'productos';
@@ -217,8 +223,9 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   @override
   Future<void> createProducto(ProductoModel producto) async {
     try {
+      final data = producto.toMap();
       await _dbHelper.transaction((txn) async {
-        await txn.insert(_tableProductos, producto.toMap());
+        await txn.insert(_tableProductos, data);
         for (final vm in producto.variantesToMapList()) {
           await txn.insert(_tableVariantes, vm);
         }
@@ -228,7 +235,15 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         registroId: producto.id,
         operacion: SyncOperation.insert,
         restaurantId: producto.restaurantId,
-        datos: producto.toMap(),
+        datos: data,
+      );
+
+      unawaited(
+        _menuRealtimeDb.upsertProducto(
+          restaurantId: producto.restaurantId,
+          productoId: producto.id,
+          data: data,
+        ),
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al crear producto: $e');
@@ -238,10 +253,11 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   @override
   Future<void> updateProducto(ProductoModel producto) async {
     try {
+      final data = producto.toMap();
+      data['updated_at'] = DateTime.now().toIso8601String();
+
       await _dbHelper.transaction((txn) async {
         // 1. Actualizar campos del producto
-        final data = producto.toMap();
-        data['updated_at'] = DateTime.now().toIso8601String();
         await txn.update(
           _tableProductos,
           data,
@@ -271,7 +287,15 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         registroId: producto.id,
         operacion: SyncOperation.update,
         restaurantId: producto.restaurantId,
-        datos: producto.toMap(),
+        datos: data,
+      );
+
+      unawaited(
+        _menuRealtimeDb.upsertProducto(
+          restaurantId: producto.restaurantId,
+          productoId: producto.id,
+          data: data,
+        ),
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al actualizar producto: $e');
@@ -302,6 +326,13 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         operacion: SyncOperation.delete,
         restaurantId: _tenantContext.restaurantId,
       );
+
+      unawaited(
+        _menuRealtimeDb.deleteProducto(
+          restaurantId: _tenantContext.restaurantId,
+          productoId: id,
+        ),
+      );
     } catch (e) {
       throw DatabaseException(message: 'Error al eliminar producto: $e');
     }
@@ -310,14 +341,20 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   @override
   Future<void> toggleDisponibilidad(String id, bool disponible) async {
     try {
+      final updatedAt = DateTime.now().toIso8601String();
       await _dbHelper.update(
         _tableProductos,
-        {
-          'disponible': disponible ? 1 : 0,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
+        {'disponible': disponible ? 1 : 0, 'updated_at': updatedAt},
         where: 'id = ?',
         whereArgs: [id],
+      );
+
+      unawaited(
+        _menuRealtimeDb.patchProducto(
+          restaurantId: _tenantContext.restaurantId,
+          productoId: id,
+          data: {'disponible': disponible ? 1 : 0, 'updated_at': updatedAt},
+        ),
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al cambiar disponibilidad: $e');

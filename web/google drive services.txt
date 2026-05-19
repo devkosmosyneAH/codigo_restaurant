@@ -1,0 +1,86 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'app_config.dart';
+
+/// Servicio para obtener URLs de archivos grandes desde Google Drive.
+///
+/// Uso previsto:
+///   - PDFs de certificaciones (el fileId se almacena en Firestore)
+///   - Cualquier archivo binario grande que no convenga en Firebase Storage
+///
+/// Los metadatos (listas, descripciones, etc.) se obtienen desde Firestore
+/// a través de [FirebaseService].
+class GoogleDriveService {
+  static const String _baseUrl = 'https://www.googleapis.com/drive/v3';
+
+  // ─── URL helpers ────────────────────────────────────────────────────────────
+
+  /// URL de previsualización embebida (útil para PDFs en WebView).
+  static String previewUrl(String fileId) =>
+      'https://drive.google.com/file/d/$fileId/preview';
+
+  /// URL de descarga directa con API key (útil para imágenes / descarga).
+  static String downloadUrl(String fileId) {
+    final apiKey = AppConfig.googleApiKey;
+    return '$_baseUrl/files/$fileId?alt=media&key=$apiKey';
+  }
+
+  // ─── Legacy: búsqueda por nombre (mantener por compatibilidad) ──────────────
+
+  /// Encuentra el fileId de un archivo por nombre dentro de la carpeta raíz.
+  static Future<String?> findFileId(String fileName) async {
+    final folderId = AppConfig.googleDriveFolderId;
+    final apiKey = AppConfig.googleApiKey;
+
+    final uri = Uri.parse(
+      '$_baseUrl/files'
+      '?q=${Uri.encodeComponent("'$folderId' in parents and name='$fileName' and trashed=false")}'
+      '&key=$apiKey'
+      '&fields=files(id,name)',
+    );
+
+    final response = await http.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Drive: error al listar archivos (${response.statusCode})',
+      );
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final files = json['files'] as List<dynamic>;
+    if (files.isEmpty) return null;
+    return files.first['id'] as String?;
+  }
+
+  // ─── Sincronización: listar archivos de una carpeta ──────────────────────────
+
+  /// Lista todos los archivos (no carpetas) dentro de una carpeta específica.
+  /// Retorna una lista con: {id, name, mimeType, webViewLink}
+  static Future<List<Map<String, dynamic>>> listFilesInFolder(
+    String folderId, {
+    String? apiKey,
+  }) async {
+    apiKey ??= AppConfig.googleApiKey;
+
+    final uri = Uri.parse(
+      '$_baseUrl/files'
+      '?q=${Uri.encodeComponent("'$folderId' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'")}'
+      '&key=$apiKey'
+      '&fields=files(id,name,mimeType,webViewLink,createdTime)',
+    );
+
+    final response = await http.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Drive: error al listar archivos de la carpeta (${response.statusCode})',
+      );
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final files = (json['files'] as List<dynamic>? ?? [])
+        .map((file) => Map<String, dynamic>.from(file as Map))
+        .toList();
+
+    return files;
+  }
+}

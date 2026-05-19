@@ -3,33 +3,33 @@
 Aplicación Flutter para gestión de restaurante con arquitectura híbrida:
 
 - SQLite local como fuente de verdad offline.
-- Firestore como sincronización multi-dispositivo.
+- Firebase Realtime Database como sincronización multi-dispositivo.
 
 ## Estrategia de Sync por Plataforma
 
-Actualmente la sincronización cloud está habilitada donde Firebase está
-configurado en `firebase_options.dart`.
+Actualmente la sincronización cloud está habilitada cuando existe la
+configuración de Realtime Database por variable de entorno.
 
-- Plataformas soportadas por Firebase config: sincronizan SQLite <-> Firestore.
-- Plataformas sin Firebase config: corren en modo local-only (SQLite),
+- Plataformas con `FIREBASE_DATABASE_URL`: sincronizan SQLite <-> Realtime Database.
+- Plataformas sin `FIREBASE_DATABASE_URL`: corren en modo local-only (SQLite),
   sin sync cloud.
 
 Esto evita estados "a medias" en preproducción.
 
-Para habilitar más plataformas (Android/iOS/desktop), generar configuración:
+## Reglas de Realtime Database
 
-```bash
-flutterfire configure
+Define reglas de Realtime Database desde Firebase Console para la ruta que uses.
+
+En este proyecto se sincroniza bajo:
+
+```text
+restaurantes/{restaurantId}/{tabla}/{documentId}
 ```
 
-## Reglas de Firestore
-
-Este repo versiona reglas en `firestore.rules` y referencia en `firebase.json`.
-
-Despliegue:
+Variables de entorno recomendadas:
 
 ```bash
-npx firebase-tools deploy --only firestore:rules --project <tu-project-id>
+FIREBASE_DATABASE_URL=https://<tu-proyecto>-default-rtdb.firebaseio.com
 ```
 
 Si no has autenticado CLI aún:

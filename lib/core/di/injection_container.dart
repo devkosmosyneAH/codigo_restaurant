@@ -34,6 +34,7 @@ import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasou
 import 'package:restaurant_app/features/menu/data/repositories/menu_repository_impl.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_realtime_database_service.dart';
 import 'package:restaurant_app/features/menu/domain/repositories/menu_repository.dart';
 import 'package:restaurant_app/features/menu/domain/usecases/menu_usecases.dart';
 
@@ -217,11 +218,15 @@ void _initMenu() {
   sl.registerLazySingleton<DriveMenuConnectionService>(
     () => DriveMenuConnectionService(datasource: sl()),
   );
+  sl.registerLazySingleton<MenuRealtimeDatabaseService>(
+    () => MenuRealtimeDatabaseService(),
+  );
   sl.registerLazySingleton<DriveImageSyncQueueService>(
     () => DriveImageSyncQueueService(
       syncManager: sl(),
       driveService: sl(),
       dbHelper: sl(),
+      menuRealtimeDb: sl(),
     ),
   );
 
@@ -231,6 +236,7 @@ void _initMenu() {
       dbHelper: sl(),
       syncManager: sl(),
       tenantContext: sl(),
+      menuRealtimeDb: sl(),
     ),
   );
   // Repositories

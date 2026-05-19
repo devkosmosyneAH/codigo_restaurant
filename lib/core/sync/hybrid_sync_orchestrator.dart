@@ -1,18 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/sync/sync_cloud_service.dart';
 import 'package:restaurant_app/core/sync/sync_manager.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 
-/// Orquestador de sincronizacion hibrida (SQLite local + Firestore central).
+/// Orquestador de sincronizacion hibrida (SQLite local + Realtime Database).
 ///
 /// Mantiene:
 /// - Push incremental de pendientes locales hacia la nube.
-/// - Pull en tiempo real desde Firestore a SQLite.
+/// - Pull por polling desde Realtime Database hacia SQLite.
 /// - Comportamiento offline-safe cuando no hay conectividad.
 class HybridSyncOrchestrator {
   HybridSyncOrchestrator({
@@ -56,8 +55,6 @@ class HybridSyncOrchestrator {
   final Connectivity _connectivity;
   final Future<void> Function()? _beforePushHook;
 
-  final Map<String, StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>
-  _remoteSubs = {};
   final Map<String, Set<String>> _tableColumnsCache = {};
 
   Timer? _pulseTimer;
@@ -67,12 +64,11 @@ class HybridSyncOrchestrator {
   bool _online = false;
   bool _syncInProgress = false;
   bool _cloudSyncEnabled = true;
-  String? _listeningTenantId;
 
-  /// Fuerza un ciclo de sincronización en este momento.
+  /// Fuerza un ciclo de sincronizacion en este momento.
   ///
-  /// Si la orquestación aún no está iniciada o no hay conectividad,
-  /// el método retorna sin lanzar error.
+  /// Si la orquestacion aun no esta iniciada o no hay conectividad,
+  /// el metodo retorna sin lanzar error.
   Future<void> syncNow({String reason = 'manual'}) async {
     await _runCycle(reason: reason);
   }
@@ -82,7 +78,6 @@ class HybridSyncOrchestrator {
     _started = true;
     _cloudSyncEnabled = _cloudService.isCloudSyncSupportedPlatform;
 
-    // Estrategia explícita: sin soporte Firebase en plataforma => solo local.
     if (!_cloudSyncEnabled) {
       return;
     }
@@ -90,7 +85,6 @@ class HybridSyncOrchestrator {
     try {
       await _refreshConnectivity();
     } catch (_) {
-      // Fallback conservador cuando el plugin no esta disponible.
       _online = true;
     }
 
@@ -100,9 +94,6 @@ class HybridSyncOrchestrator {
         _online = _hasConnectivity(event);
         if (!wasOnline && _online) {
           unawaited(_runCycle(reason: 'connectivity-restored'));
-        }
-        if (wasOnline && !_online) {
-          unawaited(_stopRealtimeListeners());
         }
       });
     } catch (_) {
@@ -124,33 +115,34 @@ class HybridSyncOrchestrator {
     await _connectivitySub?.cancel();
     _connectivitySub = null;
 
-    await _stopRealtimeListeners();
     _started = false;
   }
 
   Future<void> _runCycle({required String reason}) async {
     if (!_started || !_cloudSyncEnabled || _syncInProgress) return;
-
-    if (!_online) {
-      await _stopRealtimeListeners();
-      return;
-    }
+    if (!_online) return;
 
     _syncInProgress = true;
     try {
       await _cloudService.ensureAvailable();
-      await _ensureRealtimeListeners();
-      if (_beforePushHook != null) {
+
+      final tenantId = _tenantContext.restaurantId.trim();
+      if (tenantId.isNotEmpty) {
+        await _pullRemoteChanges(tenantId: tenantId);
+      }
+
+      final beforePushHook = _beforePushHook;
+      if (beforePushHook != null) {
         try {
-          await _beforePushHook!();
+          await beforePushHook();
         } catch (_) {
           // No interrumpe push cloud si falla una tarea auxiliar local.
         }
       }
+
       await _pushPendingRecords();
     } catch (_) {
       // Si la nube falla (auth/config/transitorio), mantenemos modo local.
-      await _stopRealtimeListeners();
     } finally {
       _syncInProgress = false;
     }
@@ -188,127 +180,41 @@ class HybridSyncOrchestrator {
     }
   }
 
-  Future<void> _ensureRealtimeListeners() async {
-    final tenantId = _tenantContext.restaurantId;
-    if (tenantId.isEmpty) return;
-
-    final alreadyListeningSameTenant =
-        _listeningTenantId == tenantId &&
-        _remoteSubs.length == _realtimeTables.length;
-    if (alreadyListeningSameTenant) return;
-
-    await _stopRealtimeListeners();
-    _listeningTenantId = tenantId;
-
+  Future<void> _pullRemoteChanges({required String tenantId}) async {
     for (final table in _realtimeTables) {
-      final query = await _buildRealtimeQuery(table: table, tenantId: tenantId);
-      final sub = query.snapshots().listen(
-        (snapshot) => unawaited(
-          _handleRemoteSnapshot(
-            table: table,
-            tenantId: tenantId,
-            snapshot: snapshot,
-          ),
-        ),
-        onError: (error) {
-          unawaited(
-            _syncManager.registrarAuditoria(
-              direction: 'pull',
-              status: 'stream_error',
-              tabla: table,
-              registroId: '*',
-              restaurantId: tenantId,
-              detail: error.toString(),
-            ),
-          );
-          // Mantener resiliencia: siguiente pulso intentara restablecer.
-        },
-      );
-      _remoteSubs[table] = sub;
-    }
-  }
-
-  Future<void> _stopRealtimeListeners() async {
-    for (final sub in _remoteSubs.values) {
-      await sub.cancel();
-    }
-    _remoteSubs.clear();
-    _listeningTenantId = null;
-  }
-
-  Future<void> _handleRemoteSnapshot({
-    required String table,
-    required String tenantId,
-    required QuerySnapshot<Map<String, dynamic>> snapshot,
-  }) async {
-    for (final change in snapshot.docChanges) {
-      final docId = change.doc.id;
       try {
-        if (change.type == DocumentChangeType.removed) {
-          await _applyRemoteDelete(
-            table: table,
-            tenantId: tenantId,
-            docId: docId,
-          );
-          continue;
-        }
-
-        final data = change.doc.data();
-        if (data == null) continue;
-
-        await _applyRemoteUpsert(
+        final cursor = await _loadLocalRealtimeCursor(
           table: table,
           tenantId: tenantId,
-          docId: docId,
-          rawData: data,
         );
-      } catch (_) {
+
+        final remoteDocs = await _cloudService.listCollection(
+          restaurantId: tenantId,
+          collection: table,
+          updatedAfter: cursor,
+        );
+
+        if (remoteDocs.isEmpty) continue;
+
+        for (final entry in remoteDocs.entries) {
+          await _applyRemoteUpsert(
+            table: table,
+            tenantId: tenantId,
+            docId: entry.key,
+            rawData: entry.value,
+          );
+        }
+      } catch (error) {
         await _syncManager.registrarAuditoria(
           direction: 'pull',
-          status: 'error',
+          status: 'stream_error',
           tabla: table,
-          registroId: docId,
+          registroId: '*',
           restaurantId: tenantId,
-          detail: 'pull_apply_failed',
+          detail: error.toString(),
         );
       }
     }
-  }
-
-  Future<void> _applyRemoteDelete({
-    required String table,
-    required String tenantId,
-    required String docId,
-  }) async {
-    final lookup = await _lookupForRow(
-      table: table,
-      tenantId: tenantId,
-      docId: docId,
-    );
-    if (lookup == null) {
-      await _syncManager.registrarAuditoria(
-        direction: 'pull',
-        status: 'ignored',
-        tabla: table,
-        registroId: docId,
-        restaurantId: tenantId,
-        detail: 'lookup_not_supported_for_delete',
-      );
-      return;
-    }
-
-    await _dbHelper.delete(
-      table,
-      where: lookup.where,
-      whereArgs: lookup.whereArgs,
-    );
-    await _syncManager.registrarAuditoria(
-      direction: 'pull',
-      status: 'deleted',
-      tabla: table,
-      registroId: docId,
-      restaurantId: tenantId,
-    );
   }
 
   Future<void> _applyRemoteUpsert({
@@ -344,8 +250,8 @@ class HybridSyncOrchestrator {
       registroId: registroId,
     );
 
-    // Protección ante desfase de reloj: si existe cambio local pendiente,
-    // solo aceptamos el eco remoto del mismo sync_record.
+    // Si existe cambio local pendiente, solo aceptamos el eco remoto del
+    // mismo sync_record para evitar pisar cambios locales.
     if (pendingRecord != null) {
       final remoteRecordId = _extractRemoteSyncRecordId(rawData);
       final isLocalEcho =
@@ -578,39 +484,24 @@ class HybridSyncOrchestrator {
     return !remoteTs.isBefore(localTs);
   }
 
-  Future<Query<Map<String, dynamic>>> _buildRealtimeQuery({
-    required String table,
-    required String tenantId,
-  }) async {
-    Query<Map<String, dynamic>> query = FirebaseFirestore.instance
-        .collection('restaurantes')
-        .doc(tenantId)
-        .collection(table);
-
-    final cursor = await _loadLocalRealtimeCursor(
-      table: table,
-      tenantId: tenantId,
-    );
-    if (cursor == null) return query;
-
-    return query
-        .where('updated_at', isGreaterThan: cursor)
-        .orderBy('updated_at');
-  }
-
   Future<String?> _loadLocalRealtimeCursor({
     required String table,
     required String tenantId,
   }) async {
     final columns = await _getTableColumns(table);
-    final supportsCursor =
-        columns.contains('updated_at') && columns.contains('restaurant_id');
-    if (!supportsCursor) return null;
+    if (!columns.contains('updated_at')) return null;
 
-    final rows = await _dbHelper.rawQuery(
-      'SELECT MAX(updated_at) as max_updated_at FROM $table WHERE restaurant_id = ?',
-      [tenantId],
-    );
+    List<Map<String, dynamic>> rows;
+    if (columns.contains('restaurant_id')) {
+      rows = await _dbHelper.rawQuery(
+        'SELECT MAX(updated_at) as max_updated_at FROM $table WHERE restaurant_id = ?',
+        [tenantId],
+      );
+    } else {
+      rows = await _dbHelper.rawQuery(
+        'SELECT MAX(updated_at) as max_updated_at FROM $table',
+      );
+    }
 
     if (rows.isEmpty) return null;
     final cursor = _toIsoString(rows.first['max_updated_at']);
@@ -654,7 +545,6 @@ class HybridSyncOrchestrator {
   }
 
   dynamic _normalizeValue(dynamic value) {
-    if (value is Timestamp) return value.toDate().toIso8601String();
     if (value is DateTime) return value.toIso8601String();
     if (value is bool) return value ? 1 : 0;
     if (value is Map || value is List) return jsonEncode(value);
@@ -664,7 +554,6 @@ class HybridSyncOrchestrator {
   DateTime? _parseDateTime(dynamic value) {
     if (value == null) return null;
     if (value is DateTime) return value;
-    if (value is Timestamp) return value.toDate();
     if (value is String) return DateTime.tryParse(value);
     if (value is int) {
       return DateTime.fromMillisecondsSinceEpoch(value);

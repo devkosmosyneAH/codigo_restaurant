@@ -432,23 +432,6 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
     return grouped;
   }
 
-  Future<List<PedidoItemModel>> _getItemsByPedido(String pedidoId) async {
-    final results = await _dbHelper.rawQuery(
-      '''
-      SELECT pi.*,
-             p.nombre AS producto_nombre,
-             v.nombre AS variante_nombre
-      FROM $_tablePedidoItems pi
-      LEFT JOIN productos p ON pi.producto_id = p.id
-      LEFT JOIN variantes v ON pi.variante_id = v.id
-      WHERE pi.pedido_id = ?
-      ORDER BY pi.created_at ASC
-      ''',
-      [pedidoId],
-    );
-    return results.map((r) => PedidoItemModel.fromMap(r)).toList();
-  }
-
   Future<Map<String, List<PedidoItemModel>>> _getItemsByPedidoIds(
     List<String> pedidoIds,
   ) async {
@@ -472,18 +455,6 @@ class CajaLocalDataSourceImpl implements CajaLocalDataSource {
       grouped.putIfAbsent(item.pedidoId, () => []).add(item);
     }
     return grouped;
-  }
-
-  Future<List<CotizacionItemModel>> _getCotizacionItems(
-    String cotizacionId,
-  ) async {
-    final results = await _dbHelper.query(
-      _tableCotizacionItems,
-      where: 'cotizacion_id = ?',
-      whereArgs: [cotizacionId],
-      orderBy: 'rowid ASC',
-    );
-    return results.map((r) => CotizacionItemModel.fromMap(r)).toList();
   }
 
   Future<Map<String, List<CotizacionItemModel>>> _getCotizacionItemsByIds(

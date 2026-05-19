@@ -110,6 +110,42 @@ class _InMemorySyncCloudBackend implements SyncCloudBackend {
   }
 
   @override
+  Future<Map<String, Map<String, dynamic>>> listCollection({
+    required String restaurantId,
+    required String collection,
+    String? updatedAfter,
+  }) async {
+    final prefix = 'restaurantes/$restaurantId/$collection/';
+    final cursor = updatedAfter?.trim();
+    final output = <String, Map<String, dynamic>>{};
+
+    for (final entry in documents.entries) {
+      final path = entry.key;
+      if (!path.startsWith(prefix)) continue;
+
+      final docId = path.substring(prefix.length);
+      final data = Map<String, dynamic>.from(entry.value);
+
+      if (cursor != null && cursor.isNotEmpty) {
+        final updatedAt = data['updated_at']?.toString().trim();
+        if (updatedAt != null && updatedAt.isNotEmpty) {
+          final updatedDt = DateTime.tryParse(updatedAt);
+          final cursorDt = DateTime.tryParse(cursor);
+          if (updatedDt != null &&
+              cursorDt != null &&
+              updatedDt.isBefore(cursorDt)) {
+            continue;
+          }
+        }
+      }
+
+      output[docId] = data;
+    }
+
+    return output;
+  }
+
+  @override
   Object serverTimestamp() => 'server_timestamp';
 
   void failNextSet({

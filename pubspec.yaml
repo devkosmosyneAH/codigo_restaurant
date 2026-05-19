@@ -43,9 +43,7 @@ dependencies:
   equatable: ^2.0.7
   dartz: ^0.10.1
 
-  # Firebase (preparado para sincronización futura)
-  # firebase_core: ^latest
-  # cloud_firestore: ^latest
+  # Firebase Auth (si se requiere en el futuro)
   # firebase_auth: ^latest
 
   # Charts para reportes
@@ -86,8 +84,6 @@ dependencies:
 
   # Hashing seguro de PINs
   crypto: ^3.0.6
-  firebase_core: ^4.7.0
-  cloud_firestore: ^6.3.0
 
 dev_dependencies:
   flutter_test:

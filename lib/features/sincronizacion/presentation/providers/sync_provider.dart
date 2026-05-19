@@ -153,12 +153,12 @@ class SyncNotifier extends StateNotifier<SyncState> {
         isCheckingCloud: false,
         cloudAvailable: false,
         cloudStatusMessage:
-            'Nube no disponible. Revisa la configuración de Firebase.',
+            'Nube no disponible. Revisa la configuracion de Realtime Database.',
       );
     }
   }
 
-  /// Sincroniza cada registro pendiente enviándolo a Firestore.
+  /// Sincroniza cada registro pendiente enviandolo a Realtime Database.
   ///
   /// Solo marca como sincronizado cuando el push remoto finaliza correctamente.
   Future<void> sincronizarAhora() async {
@@ -223,7 +223,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
       return;
     }
 
-    // Fallar rápido si Firebase/Firestore no está listo, para evitar
+    // Fallar rapido si Realtime Database no esta lista, para evitar
     // incrementar intentos de cada registro por un problema global.
     try {
       await _cloudService.ensureAvailable();
@@ -236,7 +236,7 @@ class SyncNotifier extends StateNotifier<SyncState> {
         isSyncing: false,
         cloudAvailable: false,
         cloudStatusMessage:
-            'Nube no disponible. Revisa la configuración de Firebase.',
+            'Nube no disponible. Revisa la configuracion de Realtime Database.',
         error:
             '${e.toString()}\n'
             'Drive local: $localOk procesadas, '

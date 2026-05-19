@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/sync/sync_manager.dart';
 import 'package:restaurant_app/core/sync/sync_record.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/features/menu/data/services/menu_realtime_database_service.dart';
 
 class DriveQueueProcessResult {
   final int totalQueued;
@@ -36,14 +38,17 @@ class DriveImageSyncQueueService {
   final SyncManager _syncManager;
   final DriveMenuConnectionService _driveService;
   final DatabaseHelper _dbHelper;
+  final MenuRealtimeDatabaseService _menuRealtimeDb;
 
   DriveImageSyncQueueService({
     required SyncManager syncManager,
     required DriveMenuConnectionService driveService,
     required DatabaseHelper dbHelper,
+    required MenuRealtimeDatabaseService menuRealtimeDb,
   }) : _syncManager = syncManager,
        _driveService = driveService,
-       _dbHelper = dbHelper;
+       _dbHelper = dbHelper,
+       _menuRealtimeDb = menuRealtimeDb;
 
   Future<void> enqueueDeleteImage({
     required String restaurantId,
@@ -323,6 +328,14 @@ class DriveImageSyncQueueService {
       operacion: SyncOperation.update,
       restaurantId: restaurantId,
       datos: {'id': productoId, 'restaurant_id': restaurantId, ...patch},
+    );
+
+    unawaited(
+      _menuRealtimeDb.patchProducto(
+        restaurantId: restaurantId,
+        productoId: productoId,
+        data: patch,
+      ),
     );
 
     return true;

@@ -70,10 +70,12 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
   bool get _isEditing => widget.producto != null;
   bool get _isBusy => _pickingImage || _submitting;
   bool get _supportsDriveUpload {
-    if (kIsWeb) return false;
+    if (kIsWeb) return true;
     return defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS ||
-        defaultTargetPlatform == TargetPlatform.macOS;
+        defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux;
   }
 
   @override
@@ -224,6 +226,26 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     }
   }
 
+  /// Convierte URLs de Google Drive al formato usercontent para evitar CORS
+  /// al renderizar en Flutter Web.
+  String _fixGoogleDriveUrl(String url) {
+    if (url.isEmpty) return url;
+
+    if (url.contains('lh3.googleusercontent.com/d/')) {
+      return url;
+    }
+
+    final regExp = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
+    final match = regExp.firstMatch(url);
+
+    if (match != null && match.groupCount > 0) {
+      final fileId = match.group(1)!;
+      return 'https://lh3.googleusercontent.com/d/$fileId';
+    }
+
+    return url;
+  }
+
   Future<void> _pickImage() async {
     if (_pickingImage) return;
     setState(() => _pickingImage = true);
@@ -326,10 +348,11 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     }
 
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      final fixedUrl = _fixGoogleDriveUrl(raw);
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Image.network(
-          raw,
+          fixedUrl,
           height: 160,
           width: double.infinity,
           fit: BoxFit.cover,
@@ -459,7 +482,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
         ),
         child: Text(
           'En esta plataforma la foto se guarda localmente junto al producto. '
-          'Para publicarla automáticamente en Drive (QR público), usa Android, iOS o macOS.',
+          'Para publicarla automáticamente en Drive (QR público), usa Android, iOS, macOS, Windows o Linux.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: cs.onSecondaryContainer,
             height: 1.35,

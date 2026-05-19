@@ -1,10 +1,8 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/app_startup/app_startup.dart';
-import 'package:restaurant_app/firebase_options.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/theme/app_theme.dart';
@@ -34,13 +32,6 @@ Future<void> main() async {
 
   // 🔧 INICIALIZACIÓN ESPECÍFICA POR PLATAFORMA
   await initializePlatformSpecific();
-
-  // 🔥 INICIALIZAR FIREBASE (solo en plataformas configuradas)
-  if (DefaultFirebaseOptions.isSupportedPlatform) {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
 
   // �🗄️ INICIALIZAR BASE DE DATOS DE FORMA SEGURA
   await initDependencies();
