@@ -84,8 +84,8 @@ class _PublicProductoCardState extends State<PublicProductoCard> {
                   Expanded(
                     child: MenuImageLoader(
                       localCachePath: widget.producto.imagenLocalCachePath,
-                      primaryImageValue: widget.producto.drivePublicUrl,
-                      fallbackImageValue: widget.producto.imagenUrl,
+                      primaryImageValue: widget.producto.imagenUrl,
+                      fallbackImageValue: widget.producto.drivePublicUrl,
                       fit: BoxFit.cover,
                       cacheWidth: 720,
                       filterQuality: FilterQuality.low,

@@ -60,6 +60,43 @@ class DriveCleanupResult {
   });
 }
 
+/// Estado de autenticación Drive tras [DriveMenuConnectionService.ensureDriveAuthenticated].
+enum DriveAuthStatus { connected, notConnected, error }
+
+/// Resultado devuelto por [DriveMenuConnectionService.ensureDriveAuthenticated].
+class DriveAuthResult {
+  final DriveAuthStatus status;
+  final String? email;
+  final String? message;
+
+  /// `true` si el popup OAuth fue bloqueado por el navegador.
+  final bool isPopupBlocked;
+
+  const DriveAuthResult._({
+    required this.status,
+    this.email,
+    this.message,
+    this.isPopupBlocked = false,
+  });
+
+  factory DriveAuthResult.connected({required String email}) =>
+      DriveAuthResult._(status: DriveAuthStatus.connected, email: email);
+
+  factory DriveAuthResult.notConnected() =>
+      DriveAuthResult._(status: DriveAuthStatus.notConnected);
+
+  factory DriveAuthResult.error({
+    required String message,
+    bool isPopupBlocked = false,
+  }) => DriveAuthResult._(
+    status: DriveAuthStatus.error,
+    message: message,
+    isPopupBlocked: isPopupBlocked,
+  );
+
+  bool get isConnected => status == DriveAuthStatus.connected;
+}
+
 /// Servicio de conexion Drive para Flutter Web (menu imagenes).
 ///
 /// Reusa Google Sign-In Web para obtener headers OAuth y consumir Drive API.
@@ -136,6 +173,186 @@ class DriveMenuConnectionService {
       debugPrint('Drive web restoreSessionSilently failed: $e\n$st');
       return false;
     }
+  }
+
+  // ── Autenticación centralizada ──────────────────────────────────────────
+
+  /// Verifica y establece autenticación con Google Drive.
+  ///
+  /// Pasos:
+  /// 1. Intenta restaurar sesión silenciosamente.
+  /// 2. Si [interactive] es `true` y no hay sesión, inicia flujo OAuth.
+  /// 3. Valida acceso real a la Drive API con una llamada de prueba.
+  ///
+  /// Todos los pasos producen logs con prefijo `drive.auth [web]:`.
+  Future<DriveAuthResult> ensureDriveAuthenticated({
+    bool interactive = false,
+  }) async {
+    final clientInfo = AppEnvironment.googleClientId.isNotEmpty
+        ? 'cargado(${AppEnvironment.googleClientId.substring(0, 12)}...)'
+        : 'VACÍO';
+    final folderInfo = AppEnvironment.driveRootFolderId.isNotEmpty
+        ? 'cargado'
+        : 'VACÍO';
+    debugPrint(
+      'drive.auth [web]: inicio ensureDriveAuthenticated '
+      'interactive=$interactive clientId=$clientInfo folderId=$folderInfo '
+      'scope=${drive.DriveApi.driveFileScope}',
+    );
+
+    // 1. Restauración silenciosa.
+    try {
+      final silent = await _googleSignIn.signInSilently();
+      if (silent != null) {
+        _currentUser = silent;
+        debugPrint(
+          'drive.auth [web]: sesión restaurada silenciosamente '
+          'cuenta=${_currentUser!.email}',
+        );
+      } else {
+        debugPrint('drive.auth [web]: sin sesión previa almacenada');
+        _currentUser = null;
+      }
+    } catch (e, st) {
+      debugPrint('drive.auth [web]: error en restauración silenciosa: $e\n$st');
+      _currentUser = null;
+    }
+
+    // 2. Flujo interactivo si es necesario y está permitido.
+    if (_currentUser == null && interactive) {
+      debugPrint(
+        'drive.auth [web]: iniciando OAuth interactivo '
+        '(selector de cuenta Google + permisos ${drive.DriveApi.driveFileScope})...',
+      );
+      try {
+        _currentUser = await _googleSignIn.signIn();
+        if (_currentUser != null) {
+          debugPrint(
+            'drive.auth [web]: OAuth exitoso '
+            'cuenta=${_currentUser!.email} scopes aprobados',
+          );
+        } else {
+          debugPrint(
+            'drive.auth [web]: OAuth cancelado por usuario (signIn retornó null)',
+          );
+        }
+      } catch (e, st) {
+        final err = e.toString();
+        final isPopupBlocked =
+            err.contains('popup') ||
+            err.contains('blocked') ||
+            err.contains('Blocked');
+        final isOriginError =
+            err.contains('origin') ||
+            err.contains('unauthorized') ||
+            err.contains('invalid_client');
+        if (isPopupBlocked) {
+          debugPrint(
+            'drive.auth [web]: POPUP BLOQUEADO por el navegador. '
+            'El usuario debe permitir popups para este sitio. Error: $e\n$st',
+          );
+        } else if (isOriginError) {
+          debugPrint(
+            'drive.auth [web]: ORIGIN NO AUTORIZADO en GCP Console. '
+            'Agrega este dominio en Authorized JavaScript origins. Error: $e\n$st',
+          );
+        } else {
+          debugPrint('drive.auth [web]: error OAuth interactivo: $e\n$st');
+        }
+        _diagnosticsService.recordError('Error OAuth Drive Web: $e');
+        _diagnosticsService.updateDriveStatus(
+          connected: false,
+          accountEmail: null,
+          error: 'Error OAuth Drive: $e',
+        );
+        return DriveAuthResult.error(
+          message: 'Error al autenticar con Google Drive: $e',
+          isPopupBlocked: isPopupBlocked,
+        );
+      }
+    }
+
+    if (_currentUser == null) {
+      debugPrint(
+        'drive.auth [web]: sin sesión activa. '
+        'interactive=$interactive → popup no se abrirá.',
+      );
+      _diagnosticsService.updateDriveStatus(
+        connected: false,
+        accountEmail: null,
+        error: 'Sin sesión activa para Drive.',
+      );
+      return DriveAuthResult.notConnected();
+    }
+
+    // 3. Validar acceso real a la Drive API.
+    final apiOk = await validateDriveApiAccess(allowInteractive: interactive);
+    if (!apiOk) {
+      const msg =
+          'Autenticado pero sin acceso a Drive API. '
+          'Verifica que los permisos OAuth incluyan drive.file.';
+      debugPrint('drive.auth [web]: $msg');
+      _diagnosticsService.updateDriveStatus(
+        connected: false,
+        accountEmail: currentEmail,
+        error: msg,
+      );
+      return DriveAuthResult.error(message: msg);
+    }
+
+    debugPrint(
+      'drive.auth [web]: Drive autenticado y validado. '
+      'Cuenta=${_currentUser!.email}',
+    );
+    _diagnosticsService.updateDriveStatus(
+      connected: true,
+      accountEmail: currentEmail,
+      tokenExpiresAt: await _tryResolveTokenExpiry(),
+    );
+    return DriveAuthResult.connected(email: currentEmail!);
+  }
+
+  /// Valida acceso real a la Drive API con un request mínimo (list 1 archivo).
+  ///
+  /// Devuelve `true` si la API responde correctamente, `false` en caso de error.
+  Future<bool> validateDriveApiAccess({bool allowInteractive = false}) async {
+    try {
+      final api = await _getDriveApi(allowInteractive: allowInteractive);
+      await api.files.list(pageSize: 1);
+      debugPrint('drive.auth [web]: validación API Drive OK');
+      return true;
+    } catch (e, st) {
+      debugPrint('drive.auth [web]: fallo validación Drive API: $e\n$st');
+      _diagnosticsService.recordError('Fallo validación Drive API: $e');
+      _diagnosticsService.updateDriveStatus(
+        connected: false,
+        accountEmail: currentEmail,
+        error: 'Validación Drive API fallida: $e',
+      );
+      return false;
+    }
+  }
+
+  /// Diagnóstico de configuración GCP visible para el administrador.
+  ///
+  /// Muestra si clientId, folderId y scope están correctamente cargados
+  /// sin exponer los valores completos.
+  Map<String, String> driveConfigDiagnostic() {
+    final clientId = AppEnvironment.googleClientId;
+    final folderId = AppEnvironment.driveRootFolderId;
+    return {
+      'clientId': clientId.isNotEmpty
+          ? '${clientId.substring(0, clientId.length.clamp(0, 12))}...'
+          : 'VACÍO — revisa GOOGLE_CLIENT_ID en dart-define',
+      'folderId': folderId.isNotEmpty
+          ? '${folderId.substring(0, folderId.length.clamp(0, 8))}...'
+          : 'VACÍO — revisa GOOGLE_DRIVE_FOLDER_ID en dart-define',
+      'isDriveConfigured': AppEnvironment.isDriveConfigured.toString(),
+      'scope': drive.DriveApi.driveFileScope,
+      'platform': 'web',
+      'sessionActive': isSignedIn.toString(),
+      'cuenta': currentEmail ?? 'ninguna',
+    };
   }
 
   Future<void> signOut() async {
@@ -231,6 +448,7 @@ class DriveMenuConnectionService {
     required String fileExtension,
   }) async {
     try {
+      final uploadStopwatch = Stopwatch()..start();
       final connection = await ensureConnectionForTenant(
         restaurantId: restaurantId,
         userId: userId,
@@ -261,6 +479,15 @@ class DriveMenuConnectionService {
       }
 
       final publicUrl = buildPublicUrl(fileId);
+      uploadStopwatch.stop();
+      debugPrint(
+        'drive.web.upload '
+        'productoId=$productoId '
+        'bytes=${bytes.length} '
+        'mime=$mimeType '
+        'elapsedMs=${uploadStopwatch.elapsedMilliseconds} '
+        'url=$publicUrl',
+      );
       _diagnosticsService.recordUploadSuccess(
         fileId: fileId,
         publicUrl: publicUrl,
@@ -271,8 +498,9 @@ class DriveMenuConnectionService {
         publicUrl: publicUrl,
         localCachePath: null,
       );
-    } catch (e) {
+    } catch (e, st) {
       _diagnosticsService.recordUploadFailure(e);
+      debugPrint('drive.web.upload.error productoId=$productoId error=$e\n$st');
       rethrow;
     }
   }
@@ -390,43 +618,152 @@ class DriveMenuConnectionService {
     );
   }
 
-  Future<drive.DriveApi> _getDriveApi() async {
-    GoogleSignInAccount? account;
+  Future<drive.DriveApi> _getDriveApi({bool allowInteractive = true}) async {
+    const tokenError = 'Drive accessToken inválido. Reautenticación requerida.';
+
+    Future<void> resetSession() async {
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
+      try {
+        await _googleSignIn.disconnect();
+      } catch (_) {}
+      _currentUser = null;
+    }
+
+    Future<GoogleSignInAccount?> acquireAccount({
+      required bool interactive,
+    }) async {
+      GoogleSignInAccount? account = _currentUser;
+      if (account == null) {
+        try {
+          account = await _googleSignIn.signInSilently();
+          if (account != null) {
+            debugPrint(
+              'drive.auth [web]: sesión activa por signInSilently '
+              'cuenta=${account.email}',
+            );
+          }
+        } catch (e, st) {
+          debugPrint('drive.auth [web]: signInSilently falló: $e\n$st');
+        }
+      }
+
+      if (account == null && interactive) {
+        try {
+          account = await _googleSignIn.signIn();
+          if (account != null) {
+            debugPrint(
+              'drive.auth [web]: sesión activa por signIn '
+              'cuenta=${account.email}',
+            );
+          }
+        } catch (e, st) {
+          debugPrint('drive.auth [web]: signIn interactivo falló: $e\n$st');
+        }
+      }
+
+      return account;
+    }
+
+    Future<String> resolveAccessToken(GoogleSignInAccount account) async {
+      final auth = await account.authentication;
+      final token = auth.accessToken;
+
+      if (token == null || token.isEmpty) {
+        debugPrint('drive.auth [web]: accessToken null para ${account.email}');
+        await resetSession();
+        final relogin = await acquireAccount(interactive: true);
+        if (relogin == null) {
+          throw StateError(tokenError);
+        }
+
+        _currentUser = relogin;
+        final retryAuth = await relogin.authentication;
+        final retryToken = retryAuth.accessToken;
+        if (retryToken == null || retryToken.isEmpty) {
+          debugPrint(
+            'drive.auth [web]: accessToken null tras reautenticación '
+            'cuenta=${relogin.email}',
+          );
+          await resetSession();
+          throw StateError(tokenError);
+        }
+        final retryPreview = retryToken.substring(
+          0,
+          retryToken.length.clamp(0, 8),
+        );
+        debugPrint(
+          'drive.auth [web]: accessToken reautenticado '
+          '($retryPreview...) cuenta=${relogin.email}',
+        );
+        return retryToken;
+      }
+
+      final tokenPreview = token.substring(0, token.length.clamp(0, 8));
+      debugPrint(
+        'drive.auth [web]: accessToken obtenido '
+        '($tokenPreview...) cuenta=${account.email}',
+      );
+      return token;
+    }
+
     try {
-      account = _currentUser ?? await _googleSignIn.signInSilently();
-    } catch (e, st) {
-      final message = 'Error recuperando sesión OAuth Web para Drive: $e';
+      final account = await acquireAccount(interactive: allowInteractive);
+      if (account == null) {
+        _diagnosticsService.updateDriveStatus(
+          connected: false,
+          accountEmail: null,
+          error: 'No hay sesión activa para Drive en Web.',
+        );
+        throw StateError(
+          'No hay sesion Google activa. El admin debe iniciar sesion antes.',
+        );
+      }
+
+      _currentUser = account;
+      debugPrint(
+        'drive.auth [web]: sesión Google activa cuenta=${account.email}',
+      );
+
+      var token = await resolveAccessToken(account);
+      var api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
+
+      try {
+        await api.files.list(pageSize: 1);
+      } catch (e, st) {
+        debugPrint('drive.auth [web]: validación runtime Drive falló: $e\n$st');
+        _diagnosticsService.updateDriveStatus(
+          connected: false,
+          accountEmail: currentEmail,
+          error: 'Validación runtime Drive fallida: $e',
+        );
+
+        if (!allowInteractive) {
+          throw StateError('Autenticado pero sin acceso a Drive API.');
+        }
+
+        await resetSession();
+        final relogin = await acquireAccount(interactive: true);
+        if (relogin == null) {
+          throw StateError('Autenticado pero sin acceso a Drive API.');
+        }
+
+        _currentUser = relogin;
+        token = await resolveAccessToken(relogin);
+        api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
+        await api.files.list(pageSize: 1);
+      }
+
       _diagnosticsService.updateDriveStatus(
-        connected: false,
+        connected: true,
         accountEmail: currentEmail,
-        error: message,
+        tokenExpiresAt: await _tryResolveTokenExpiry(),
       );
-      debugPrint('$message\n$st');
-      throw StateError(message);
-    }
-
-    if (account == null) {
-      _diagnosticsService.updateDriveStatus(
-        connected: false,
-        accountEmail: null,
-        error: 'No hay sesión activa para Drive en Web.',
-      );
-      throw StateError(
-        'No hay sesion Google activa. El admin debe iniciar sesion antes.',
-      );
-    }
-
-    _currentUser = account;
-    _diagnosticsService.updateDriveStatus(
-      connected: true,
-      accountEmail: currentEmail,
-      tokenExpiresAt: await _tryResolveTokenExpiry(),
-    );
-    try {
-      final authHeaders = await account.authHeaders;
-      return drive.DriveApi(_AuthClient(authHeaders));
+      return api;
     } catch (e, st) {
-      final message = 'No se pudieron obtener headers OAuth para Drive Web: $e';
+      if (e is StateError) rethrow;
+      final message = 'No se pudo construir DriveApi Web: $e';
       _diagnosticsService.updateDriveStatus(
         connected: false,
         accountEmail: currentEmail,

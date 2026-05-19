@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/sync/sync_manager.dart';
 import 'package:restaurant_app/core/sync/sync_record.dart';
@@ -37,6 +40,8 @@ class DriveImageSyncQueueService {
   static const String localQueueTable = '_local_drive_ops';
   static const String _deleteImageKind = 'delete_image';
   static const String _uploadImageKind = 'upload_image';
+  static const String _imageTempPathKey = 'image_temp_path';
+  static const String _legacyImageBase64Key = 'image_base64';
   static const Duration _autoCleanupMinInterval = Duration(hours: 4);
   static const Duration _autoCleanupMinAge = Duration(hours: 8);
   static const int _autoCleanupMaxDeletes = 25;
@@ -123,10 +128,35 @@ class DriveImageSyncQueueService {
         : fileExtension.trim().toLowerCase();
 
     final previousFileId = previousDriveFileId?.trim();
+    final queueRecordId = 'upload:$normalizedProductoId';
+
+    final tempImagePath = await _writePendingImageTempFile(
+      restaurantId: normalizedRestaurantId,
+      productoId: normalizedProductoId,
+      fileExtension: normalizedExtension,
+      bytes: bytes,
+    );
+    if (tempImagePath == null || tempImagePath.trim().isEmpty) {
+      _diagnosticsService?.recordError(
+        'No se pudo crear archivo temporal para cola Drive '
+        'de "$normalizedProductoId".',
+      );
+      return;
+    }
+
+    final existing = await _syncManager.obtenerPendiente(
+      tabla: localQueueTable,
+      registroId: queueRecordId,
+    );
+    final previousTempPath =
+        existing?.datos?[_imageTempPathKey]?.toString().trim() ?? '';
+    if (previousTempPath.isNotEmpty && previousTempPath != tempImagePath) {
+      await _deleteTempImageFile(previousTempPath);
+    }
 
     await _syncManager.registrarOperacion(
       tabla: localQueueTable,
-      registroId: 'upload:$normalizedProductoId',
+      registroId: queueRecordId,
       operacion: SyncOperation.update,
       restaurantId: normalizedRestaurantId,
       datos: {
@@ -136,7 +166,7 @@ class DriveImageSyncQueueService {
         'producto_id': normalizedProductoId,
         'mime_type': normalizedMimeType,
         'file_extension': normalizedExtension,
-        'image_base64': base64Encode(bytes),
+        _imageTempPathKey: tempImagePath,
         'previous_drive_file_id':
             (previousFileId == null || previousFileId.isEmpty)
             ? null
@@ -351,29 +381,53 @@ class DriveImageSyncQueueService {
     final mimeType = data['mime_type']?.toString().trim() ?? '';
     final fileExtension = (data['file_extension']?.toString().trim() ?? 'jpg')
         .toLowerCase();
-    final encodedBytes = data['image_base64']?.toString().trim() ?? '';
+    final tempImagePath = data[_imageTempPathKey]?.toString().trim() ?? '';
+    final encodedBytes = data[_legacyImageBase64Key]?.toString().trim() ?? '';
 
     if (restaurantId.isEmpty ||
         productoId.isEmpty ||
         mimeType.isEmpty ||
-        encodedBytes.isEmpty) {
+        (tempImagePath.isEmpty && encodedBytes.isEmpty)) {
       _diagnosticsService?.recordError(
         'Registro de cola de Drive incompleto para producto "$productoId".',
       );
+      await _deleteTempImageFile(tempImagePath);
       return _DriveQueueOperationOutcome.drop;
     }
 
     List<int> bytes;
-    try {
-      bytes = base64Decode(encodedBytes);
-    } catch (e, st) {
-      _diagnosticsService?.recordError(
-        'Payload base64 inválido en cola Drive para "$productoId": $e',
-      );
-      debugPrint('Drive queue decode error for $productoId: $e\n$st');
+    if (tempImagePath.isNotEmpty) {
+      try {
+        final file = File(tempImagePath);
+        if (!await file.exists()) {
+          _diagnosticsService?.recordError(
+            'Archivo temporal no encontrado para cola Drive de "$productoId".',
+          );
+          return _DriveQueueOperationOutcome.drop;
+        }
+        bytes = await file.readAsBytes();
+      } catch (e, st) {
+        _diagnosticsService?.recordError(
+          'No se pudo leer archivo temporal de cola Drive para "$productoId": $e',
+        );
+        debugPrint('Drive queue temp read error for $productoId: $e\n$st');
+        return _DriveQueueOperationOutcome.drop;
+      }
+    } else {
+      try {
+        bytes = base64Decode(encodedBytes);
+      } catch (e, st) {
+        _diagnosticsService?.recordError(
+          'Payload base64 inválido en cola Drive para "$productoId": $e',
+        );
+        debugPrint('Drive queue decode error for $productoId: $e\n$st');
+        return _DriveQueueOperationOutcome.drop;
+      }
+    }
+    if (bytes.isEmpty) {
+      await _deleteTempImageFile(tempImagePath);
       return _DriveQueueOperationOutcome.drop;
     }
-    if (bytes.isEmpty) return _DriveQueueOperationOutcome.drop;
 
     DriveUploadResult upload;
     try {
@@ -417,8 +471,10 @@ class DriveImageSyncQueueService {
 
       if (!applied) {
         await _driveService.tryDeleteProductImage(upload.fileId);
+        await _deleteTempImageFile(tempImagePath);
         return _DriveQueueOperationOutcome.drop;
       }
+      await _deleteTempImageFile(tempImagePath);
       return _DriveQueueOperationOutcome.success;
     } catch (e, st) {
       _diagnosticsService?.recordError(
@@ -477,6 +533,50 @@ class DriveImageSyncQueueService {
     );
 
     return true;
+  }
+
+  Future<String?> _writePendingImageTempFile({
+    required String restaurantId,
+    required String productoId,
+    required String fileExtension,
+    required List<int> bytes,
+  }) async {
+    try {
+      final tmpDir = await getTemporaryDirectory();
+      final queueDir = Directory(
+        p.join(tmpDir.path, 'menu_drive_queue', restaurantId),
+      );
+      if (!await queueDir.exists()) {
+        await queueDir.create(recursive: true);
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File(
+        p.join(queueDir.path, '${productoId}_$timestamp.$fileExtension'),
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (e, st) {
+      _diagnosticsService?.recordError(
+        'No se pudo escribir archivo temporal de cola Drive: $e',
+      );
+      debugPrint('Drive queue temp write error: $e\n$st');
+      return null;
+    }
+  }
+
+  Future<void> _deleteTempImageFile(String? path) async {
+    final normalized = path?.trim() ?? '';
+    if (normalized.isEmpty) return;
+
+    try {
+      final file = File(normalized);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (e, st) {
+      debugPrint('Drive queue temp delete warning: $e\n$st');
+    }
   }
 
   Future<void> _runAutoCleanupIfDue({

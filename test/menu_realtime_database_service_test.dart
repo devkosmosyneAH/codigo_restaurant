@@ -76,5 +76,42 @@ void main() {
         expect(callCount, 0);
       },
     );
+
+    test(
+      'upsertProducto rechaza rutas locales/blob y drive_file_id inválido',
+      () async {
+        Map<String, dynamic>? sentBody;
+        var callCount = 0;
+
+        final client = MockClient((request) async {
+          callCount++;
+          sentBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response('{}', 200);
+        });
+
+        final service = MenuRealtimeDatabaseService(httpClient: client);
+
+        final ok = await service.upsertProducto(
+          restaurantId: 'la_pena_001',
+          productoId: 'prod_3',
+          data: <String, dynamic>{
+            'id': 'prod_3',
+            'nombre': 'Pizza Local',
+            'imagen_url': 'file:///tmp/foto.jpg',
+            'drive_public_url': 'blob:https://example.com/1234',
+            'drive_file_id': 'https://drive.google.com/file/d/ABC',
+            'imagen_local_cache_path': r'C:\temp\foto.jpg',
+          },
+        );
+
+        expect(ok, isTrue);
+        expect(callCount, 1);
+        expect(sentBody, isNotNull);
+        expect(sentBody!['imagen_url'], isNull);
+        expect(sentBody!['drive_public_url'], isNull);
+        expect(sentBody!['drive_file_id'], isNull);
+        expect(sentBody!['imagen_local_cache_path'], isNull);
+      },
+    );
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:http/http.dart' as http;
@@ -76,12 +77,130 @@ class DriveBackupService {
   // ── Internal ─────────────────────────────────────────────────────────────
 
   Future<drive.DriveApi> _getDriveApi() async {
-    final account = _currentUser ?? await signInSilently();
-    if (account == null) throw Exception('No hay sesión de Google activa.');
+    const tokenError = 'Drive accessToken inválido. Reautenticación requerida.';
 
-    final authHeaders = await account.authHeaders;
-    final client = _AuthClient(authHeaders);
-    return drive.DriveApi(client);
+    Future<void> resetSession() async {
+      try {
+        await signOut();
+      } catch (_) {}
+      try {
+        await _googleSignIn.disconnect();
+      } catch (_) {}
+      _currentUser = null;
+    }
+
+    Future<GoogleSignInAccount?> acquireAccount({
+      required bool interactive,
+    }) async {
+      var account = _currentUser;
+      if (account == null) {
+        account = await signInSilently();
+        if (account != null) {
+          debugPrint(
+            'drive.auth [backup]: sesión activa por signInSilently '
+            'cuenta=${account.email}',
+          );
+        }
+      }
+
+      if (account == null && interactive) {
+        debugPrint(
+          'drive.auth [backup]: sin sesión silenciosa, '
+          'forzando signIn interactivo.',
+        );
+        account = await signIn();
+        if (account != null) {
+          debugPrint(
+            'drive.auth [backup]: sesión activa por signIn '
+            'cuenta=${account.email}',
+          );
+        }
+      }
+
+      return account;
+    }
+
+    Future<String> resolveAccessToken(GoogleSignInAccount account) async {
+      final auth = await account.authentication;
+      final token = auth.accessToken;
+
+      if (token == null || token.isEmpty) {
+        debugPrint(
+          'drive.auth [backup]: accessToken null para ${account.email}',
+        );
+        await resetSession();
+
+        final relogin = await acquireAccount(interactive: true);
+        if (relogin == null) {
+          throw StateError(tokenError);
+        }
+
+        _currentUser = relogin;
+        final retryAuth = await relogin.authentication;
+        final retryToken = retryAuth.accessToken;
+        if (retryToken == null || retryToken.isEmpty) {
+          debugPrint(
+            'drive.auth [backup]: accessToken null tras reautenticación '
+            'cuenta=${relogin.email}',
+          );
+          await resetSession();
+          throw StateError(tokenError);
+        }
+        final retryPreview = retryToken.substring(
+          0,
+          retryToken.length.clamp(0, 8),
+        );
+        debugPrint(
+          'drive.auth [backup]: accessToken reautenticado '
+          '($retryPreview...) cuenta=${relogin.email}',
+        );
+        return retryToken;
+      }
+
+      final tokenPreview = token.substring(0, token.length.clamp(0, 8));
+      debugPrint(
+        'drive.auth [backup]: accessToken obtenido '
+        '($tokenPreview...) cuenta=${account.email}',
+      );
+      return token;
+    }
+
+    final account = await acquireAccount(interactive: true);
+    if (account == null) {
+      throw StateError(
+        'No hay sesión de Google activa. '
+        'El usuario debe iniciar sesión para usar Drive.',
+      );
+    }
+
+    _currentUser = account;
+    debugPrint(
+      'drive.auth [backup]: sesión Google activa cuenta=${account.email}',
+    );
+
+    var token = await resolveAccessToken(account);
+    var api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
+
+    try {
+      await api.files.list(pageSize: 1);
+    } catch (e, st) {
+      debugPrint(
+        'drive.auth [backup]: validación runtime Drive falló: $e\n$st',
+      );
+      await resetSession();
+
+      final relogin = await acquireAccount(interactive: true);
+      if (relogin == null) {
+        throw StateError('Autenticado pero sin acceso a Drive API.');
+      }
+
+      _currentUser = relogin;
+      token = await resolveAccessToken(relogin);
+      api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
+      await api.files.list(pageSize: 1);
+    }
+
+    return api;
   }
 
   /// Obtiene o crea la carpeta de backups en Drive.

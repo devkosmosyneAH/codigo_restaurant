@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:restaurant_app/core/config/app_environment.dart';
@@ -48,6 +49,8 @@ class ProductoFormDialog extends StatefulWidget {
 
 class _ProductoFormDialogState extends State<ProductoFormDialog> {
   static const int _previewCacheWidth = 720;
+  static const int _maxUploadImageWidth = 1200;
+  static const int _jpegQuality = 84;
 
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nombreCtrl;
@@ -66,6 +69,13 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
   bool _checkingDriveSession = false;
   bool _driveSessionReady = false;
   String? _driveOwnerEmail;
+  _ImageWorkflowStage _imageStage = _ImageWorkflowStage.idle;
+  int? _lastOriginalBytes;
+  int? _lastCompressedBytes;
+  double? _lastReductionPercent;
+  Duration? _lastCompressionElapsed;
+  Duration? _lastUploadElapsed;
+  String? _imageStageMessage;
   List<_VarianteEditable> _variantes = [];
 
   bool get _isEditing => widget.producto != null;
@@ -137,13 +147,16 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 
     setState(() => _checkingDriveSession = true);
     final driveService = sl<DriveMenuConnectionService>();
-    final restored = await driveService.restoreSessionSilently();
+    // Restauración silenciosa usando el método central de autenticación.
+    final result = await driveService.ensureDriveAuthenticated(
+      interactive: false,
+    );
 
     if (!mounted) return;
     setState(() {
       _checkingDriveSession = false;
-      _driveSessionReady = restored;
-      _driveOwnerEmail = driveService.currentEmail;
+      _driveSessionReady = result.isConnected;
+      _driveOwnerEmail = result.email ?? driveService.currentEmail;
     });
   }
 
@@ -164,29 +177,37 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 
     setState(() => _checkingDriveSession = true);
     final driveService = sl<DriveMenuConnectionService>();
-    final diagnostics = sl<MenuSyncDiagnosticsService>();
-    final signedIn = await driveService.signIn();
+    // Flujo OAuth interactivo: este método se llama desde un botón directo
+    // del usuario (gesto directo), por lo que el popup no será bloqueado.
+    final result = await driveService.ensureDriveAuthenticated(
+      interactive: true,
+    );
 
     if (!mounted) return;
     setState(() {
       _checkingDriveSession = false;
-      _driveSessionReady = signedIn;
-      _driveOwnerEmail = driveService.currentEmail;
+      _driveSessionReady = result.isConnected;
+      _driveOwnerEmail = result.email ?? driveService.currentEmail;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          signedIn
-              ? 'Google Drive conectado correctamente.'
-              : (diagnostics.snapshot.lastError == null ||
-                    diagnostics.snapshot.lastError!.trim().isEmpty)
-              ? 'No se pudo conectar con Google Drive.'
-              : 'No se pudo conectar con Google Drive: '
-                    '${diagnostics.snapshot.lastError}',
-        ),
-      ),
-    );
+    String message;
+    if (result.isConnected) {
+      message = 'Google Drive conectado correctamente.';
+    } else if (result.isPopupBlocked) {
+      message =
+          'El navegador bloqueó el popup de Google. '
+          'Permite popups para este sitio y vuelve a intentarlo.';
+    } else if (result.message != null) {
+      message = 'No se pudo conectar Google Drive: ${result.message}';
+    } else {
+      message = 'No se pudo conectar con Google Drive. Intenta de nuevo.';
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   String get _imageValue {
@@ -232,6 +253,154 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     }
   }
 
+  String _mimeFromExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'png':
+      default:
+        return 'image/png';
+    }
+  }
+
+  void _setImageStage(_ImageWorkflowStage stage, {String? message}) {
+    if (!mounted) return;
+    setState(() {
+      _imageStage = stage;
+      _imageStageMessage = message;
+    });
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    final kb = bytes / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(2)} MB';
+  }
+
+  bool _isDataLikeImageValue(String value) {
+    final lower = value.toLowerCase();
+    return lower.startsWith('data:image') || lower.contains(';base64,');
+  }
+
+  bool _isLocalImageValue(String value) {
+    final lower = value.toLowerCase();
+    if (lower.startsWith('file://') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('content://')) {
+      return true;
+    }
+
+    if (value.startsWith('/') ||
+        value.startsWith('./') ||
+        value.startsWith('../')) {
+      return true;
+    }
+
+    return RegExp(r'^[a-zA-Z]:\\').hasMatch(value);
+  }
+
+  bool _isValidPublicImageUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    if (_isDataLikeImageValue(trimmed) || _isLocalImageValue(trimmed)) {
+      return false;
+    }
+
+    final uri = Uri.tryParse(trimmed);
+    if (uri == null || !uri.hasScheme) return false;
+
+    final scheme = uri.scheme.toLowerCase();
+    return scheme == 'http' || scheme == 'https';
+  }
+
+  String _busyOverlayLabel() {
+    if (_imageStage == _ImageWorkflowStage.compressing) {
+      return 'Comprimiendo imagen...';
+    }
+    if (_imageStage == _ImageWorkflowStage.uploading) {
+      return 'Subiendo imagen...';
+    }
+    return _submitting
+        ? 'Guardando producto y sincronizando imagen...'
+        : 'Procesando imagen...';
+  }
+
+  String? _imageStatusLabel() {
+    if (_imageStageMessage != null && _imageStageMessage!.trim().isNotEmpty) {
+      return _imageStageMessage;
+    }
+
+    return switch (_imageStage) {
+      _ImageWorkflowStage.compressing => 'Comprimiendo imagen...',
+      _ImageWorkflowStage.uploading => 'Subiendo imagen...',
+      _ImageWorkflowStage.optimized => 'Imagen optimizada correctamente',
+      _ImageWorkflowStage.uploadError => 'Error al subir imagen',
+      _ImageWorkflowStage.idle => null,
+    };
+  }
+
+  Future<_OptimizedImage?> _optimizeImage(
+    Uint8List bytes,
+    String extension,
+  ) async {
+    final normalizedExt = extension.toLowerCase();
+    final preserveTransparency =
+        normalizedExt == 'png' ||
+        normalizedExt == 'webp' ||
+        normalizedExt == 'gif';
+
+    final targetFormat = preserveTransparency
+        ? CompressFormat.png
+        : CompressFormat.jpeg;
+
+    try {
+      final compressed = await FlutterImageCompress.compressWithList(
+        bytes,
+        minWidth: _maxUploadImageWidth,
+        minHeight: _maxUploadImageWidth,
+        quality: _jpegQuality,
+        format: targetFormat,
+        autoCorrectionAngle: true,
+        keepExif: false,
+      );
+
+      if (compressed.isNotEmpty) {
+        final compressedBytes = Uint8List.fromList(compressed);
+        if (compressedBytes.length >= bytes.length) {
+          return _OptimizedImage(
+            bytes: bytes,
+            mimeType: _mimeFromExtension(normalizedExt),
+          );
+        }
+        return _OptimizedImage(
+          bytes: compressedBytes,
+          mimeType: targetFormat == CompressFormat.png
+              ? 'image/png'
+              : 'image/jpeg',
+        );
+      }
+    } catch (e, st) {
+      debugPrint('flutter_image_compress fallback: $e\n$st');
+    }
+
+    return compute(
+      _processImageIsolate,
+      _ImageInput(
+        bytes: bytes,
+        extension: normalizedExt,
+        maxWidth: _maxUploadImageWidth,
+        jpegQuality: _jpegQuality,
+      ),
+    );
+  }
+
   /// Convierte URLs de Google Drive al formato usercontent para evitar CORS
   /// al renderizar en Flutter Web.
   String _fixGoogleDriveUrl(String url) {
@@ -254,7 +423,11 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 
   Future<void> _pickImage() async {
     if (_pickingImage) return;
-    setState(() => _pickingImage = true);
+    setState(() {
+      _pickingImage = true;
+      _imageStage = _ImageWorkflowStage.compressing;
+      _imageStageMessage = 'Comprimiendo imagen...';
+    });
 
     // Permite que Flutter renderice el estado "procesando" antes de abrir
     // el diálogo nativo del OS (en Windows, GetOpenFileName usa su propio
@@ -274,6 +447,10 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       final file = result.files.single;
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) {
+        _setImageStage(
+          _ImageWorkflowStage.uploadError,
+          message: 'Error al procesar imagen seleccionada',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('No se pudo leer la imagen seleccionada'),
@@ -283,30 +460,60 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       }
 
       final ext = (file.extension ?? 'png').toLowerCase();
-      final optimized = await compute(
-        _processImageIsolate,
-        _ImageInput(bytes: bytes, extension: ext),
-      );
+      final compressionStopwatch = Stopwatch()..start();
+      final optimized = await _optimizeImage(bytes, ext);
+      compressionStopwatch.stop();
 
       if (!mounted) return;
 
       final imageBytes = optimized?.bytes ?? bytes;
-      final mimeType =
-          optimized?.mimeType ??
-          switch (ext) {
-            'jpg' || 'jpeg' => 'image/jpeg',
-            'gif' => 'image/gif',
-            'webp' => 'image/webp',
-            _ => 'image/png',
-          };
+      final originalBytes = bytes.length;
+      final compressedBytes = imageBytes.length;
+      final reductionPercent = originalBytes <= 0
+          ? 0.0
+          : ((originalBytes - compressedBytes) * 100 / originalBytes)
+                .clamp(0.0, 100.0)
+                .toDouble();
 
-      _selectedImageData = 'data:$mimeType;base64,${base64Encode(imageBytes)}';
-      _selectedImageBytes = imageBytes;
-      _selectedImageMimeType = mimeType;
-      _selectedImageExtension = _extensionFromMime(mimeType);
-      _imagenUrlCtrl.clear();
+      final mimeType = optimized?.mimeType ?? _mimeFromExtension(ext);
+
+      debugPrint(
+        'menu.image.compress '
+        'original=${_formatBytes(originalBytes)} '
+        'compressed=${_formatBytes(compressedBytes)} '
+        'reduction=${reductionPercent.toStringAsFixed(1)}% '
+        'elapsedMs=${compressionStopwatch.elapsedMilliseconds}',
+      );
+
+      setState(() {
+        _selectedImageData =
+            'data:$mimeType;base64,${base64Encode(imageBytes)}';
+        _selectedImageBytes = imageBytes;
+        _selectedImageMimeType = mimeType;
+        _selectedImageExtension = _extensionFromMime(mimeType);
+        _imagenUrlCtrl.clear();
+        _lastOriginalBytes = originalBytes;
+        _lastCompressedBytes = compressedBytes;
+        _lastReductionPercent = reductionPercent;
+        _lastCompressionElapsed = compressionStopwatch.elapsed;
+        _imageStage = _ImageWorkflowStage.optimized;
+        _imageStageMessage = 'Imagen optimizada correctamente';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Imagen optimizada correctamente '
+            '(${_formatBytes(originalBytes)} → ${_formatBytes(compressedBytes)}).',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
+      _setImageStage(
+        _ImageWorkflowStage.uploadError,
+        message: 'Error al procesar imagen seleccionada',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No se pudo cargar la foto. Intenta con otra imagen.'),
@@ -564,7 +771,28 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate() || _submitting) return;
 
-    setState(() => _submitting = true);
+    final manualImageUrl = _imagenUrlCtrl.text.trim();
+    if (_selectedImageBytes == null &&
+        manualImageUrl.isNotEmpty &&
+        !_isValidPublicImageUrl(manualImageUrl)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'La URL de imagen es inválida. Usa una URL pública http/https.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      if (_selectedImageBytes != null) {
+        _imageStage = _ImageWorkflowStage.uploading;
+        _imageStageMessage = 'Subiendo imagen...';
+      }
+    });
 
     final now = DateTime.now();
     final tenant = sl<TenantContext>();
@@ -599,56 +827,100 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       // Si la imagen proviene del selector local, se sube a Drive para
       // garantizar acceso público sin autenticación (QR / página pública).
       if (_selectedImageBytes != null && _selectedImageMimeType != null) {
-        var signedIn = _driveSessionReady;
         var uploadedToDrive = false;
 
         if (AppEnvironment.isDriveConfigured && _supportsDriveUpload) {
-          if (!signedIn) {
-            signedIn = await driveService.signIn();
-            if (!signedIn) {
-              driveWarning = 'No se pudo iniciar sesión OAuth en Google Drive.';
-              diagnostics.recordError(driveWarning);
-            }
+          // Bloquear guardado si Drive no está conectado y hay imagen pendiente.
+          // El usuario debe usar el botón "Conectar Google Drive" antes de guardar.
+          if (!_driveSessionReady) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Para subir la foto, primero conecta Google Drive '
+                  'con el botón "Conectar Google Drive" en la sección de imagen.',
+                ),
+                duration: Duration(seconds: 4),
+              ),
+            );
+            setState(() => _submitting = false);
+            return;
           }
-          _driveSessionReady = signedIn;
-          _driveOwnerEmail = driveService.currentEmail;
 
-          if (signedIn) {
-            try {
-              final upload = await driveService.uploadProductImage(
-                restaurantId: restaurantId,
-                userId: userId,
-                productoId: productoId,
-                bytes: _selectedImageBytes!,
-                mimeType: _selectedImageMimeType!,
-                fileExtension: _selectedImageExtension ?? 'jpg',
-              );
-
-              if (driveFileId != null && driveFileId != upload.fileId) {
-                final deleted = await driveService.tryDeleteProductImage(
-                  driveFileId,
-                );
-                if (!deleted) {
-                  await driveQueue.enqueueDeleteImage(
-                    restaurantId: restaurantId,
-                    fileId: driveFileId,
-                  );
-                }
-              }
-
-              imagenUrl = upload.publicUrl;
-              driveFileId = upload.fileId;
-              drivePublicUrl = upload.publicUrl;
-              imagenLocalCachePath = upload.localCachePath;
-              uploadedToDrive = true;
-            } catch (e, st) {
-              uploadedToDrive = false;
-              driveWarning = 'Falló la subida de imagen a Drive: $e';
-              diagnostics.recordError(driveWarning);
-              debugPrint(
-                'Drive upload error for producto $productoId: $e\n$st',
-              );
+          // Refrescar token silenciosamente por si la sesión expiró.
+          final authRefresh = await driveService.ensureDriveAuthenticated(
+            interactive: false,
+          );
+          if (!authRefresh.isConnected) {
+            driveWarning =
+                'Sesión Drive expirada. Reconecta Drive y vuelve a guardar.';
+            diagnostics.recordError(driveWarning);
+            setState(() {
+              _submitting = false;
+              _driveSessionReady = false;
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text(driveWarning)));
             }
+            return;
+          }
+          _driveOwnerEmail = authRefresh.email ?? driveService.currentEmail;
+
+          try {
+            _setImageStage(
+              _ImageWorkflowStage.uploading,
+              message: 'Subiendo imagen...',
+            );
+            final uploadStopwatch = Stopwatch()..start();
+            final upload = await driveService.uploadProductImage(
+              restaurantId: restaurantId,
+              userId: userId,
+              productoId: productoId,
+              bytes: _selectedImageBytes!,
+              mimeType: _selectedImageMimeType!,
+              fileExtension: _selectedImageExtension ?? 'jpg',
+            );
+            uploadStopwatch.stop();
+            _lastUploadElapsed = uploadStopwatch.elapsed;
+            debugPrint(
+              'menu.image.upload '
+              'productoId=$productoId '
+              'elapsedMs=${uploadStopwatch.elapsedMilliseconds} '
+              'fileId=${upload.fileId} '
+              'url=${upload.publicUrl}',
+            );
+
+            if (driveFileId != null && driveFileId != upload.fileId) {
+              final deleted = await driveService.tryDeleteProductImage(
+                driveFileId,
+              );
+              if (!deleted) {
+                await driveQueue.enqueueDeleteImage(
+                  restaurantId: restaurantId,
+                  fileId: driveFileId,
+                );
+              }
+            }
+
+            imagenUrl = upload.publicUrl;
+            driveFileId = upload.fileId;
+            drivePublicUrl = upload.publicUrl;
+            imagenLocalCachePath = upload.localCachePath;
+            uploadedToDrive = true;
+            _setImageStage(
+              _ImageWorkflowStage.optimized,
+              message: 'Imagen optimizada correctamente',
+            );
+          } catch (e, st) {
+            uploadedToDrive = false;
+            driveWarning = 'Falló la subida de imagen a Drive: $e';
+            diagnostics.recordError(driveWarning);
+            debugPrint('Drive upload error for producto $productoId: $e\n$st');
+            _setImageStage(
+              _ImageWorkflowStage.uploadError,
+              message: 'Error al subir imagen',
+            );
           }
         }
 
@@ -680,6 +952,15 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                   'La imagen quedó en cola de Drive y se reintentará automáticamente.';
               driveWarning = '$baseWarning Pendientes: $pendingCount.';
               diagnostics.recordError(driveWarning);
+              _setImageStage(
+                _ImageWorkflowStage.uploadError,
+                message: 'Error al subir imagen',
+              );
+            } else {
+              _setImageStage(
+                _ImageWorkflowStage.optimized,
+                message: 'Imagen optimizada correctamente',
+              );
             }
           } else {
             throw StateError(
@@ -752,6 +1033,27 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       // Drenado oportunista sin prompt interactivo.
       await driveQueue.processPendingOperations();
 
+      if (imagenUrl != null && !_isValidPublicImageUrl(imagenUrl)) {
+        debugPrint(
+          'menu.image.persist blocked invalid imagen_url for $productoId: $imagenUrl',
+        );
+        imagenUrl = null;
+      }
+      if (drivePublicUrl != null && !_isValidPublicImageUrl(drivePublicUrl)) {
+        debugPrint(
+          'menu.image.persist blocked invalid drive_public_url for $productoId: $drivePublicUrl',
+        );
+        drivePublicUrl = null;
+      }
+      if (driveFileId != null && driveFileId.trim().isEmpty) {
+        driveFileId = null;
+      }
+      if ((imagenUrl == null || imagenUrl.isEmpty) &&
+          drivePublicUrl != null &&
+          _isValidPublicImageUrl(drivePublicUrl)) {
+        imagenUrl = drivePublicUrl;
+      }
+
       final producto = Producto(
         id: productoId,
         restaurantId: restaurantId,
@@ -784,6 +1086,10 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       final message = 'No se pudo guardar producto/imagen en Drive: $e';
       diagnostics.recordError(message);
       debugPrint('$message\n$st');
+      _setImageStage(
+        _ImageWorkflowStage.uploadError,
+        message: 'Error al subir imagen',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -877,19 +1183,63 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                         alignLabelWithHint: true,
                       ),
                       onChanged: (_) {
-                        if (_selectedImageData != null) {
-                          _selectedImageData = null;
-                          _selectedImageBytes = null;
-                          _selectedImageMimeType = null;
-                          _selectedImageExtension = null;
-                        }
-                        setState(() {});
+                        setState(() {
+                          if (_selectedImageData != null) {
+                            _selectedImageData = null;
+                            _selectedImageBytes = null;
+                            _selectedImageMimeType = null;
+                            _selectedImageExtension = null;
+                          }
+                          _imageStage = _ImageWorkflowStage.idle;
+                          _imageStageMessage = null;
+                        });
                       },
                     ),
                     if (_selectedImageData != null) ...[
                       const SizedBox(height: 6),
                       Text(
                         'Imagen seleccionada desde el dispositivo.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    if (_imageStatusLabel() != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        _imageStatusLabel()!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: switch (_imageStage) {
+                            _ImageWorkflowStage.optimized =>
+                              Colors.green.shade700,
+                            _ImageWorkflowStage.uploadError =>
+                              theme.colorScheme.error,
+                            _ => theme.colorScheme.onSurfaceVariant,
+                          },
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    if (_lastOriginalBytes != null &&
+                        _lastCompressedBytes != null &&
+                        _lastReductionPercent != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Original: ${_formatBytes(_lastOriginalBytes!)} · '
+                        'Comprimida: ${_formatBytes(_lastCompressedBytes!)} · '
+                        'Reducción: ${_lastReductionPercent!.toStringAsFixed(1)}%',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    if (_lastCompressionElapsed != null ||
+                        _lastUploadElapsed != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'Tiempo compresión: '
+                        '${_lastCompressionElapsed?.inMilliseconds ?? 0} ms · '
+                        'Tiempo subida: ${_lastUploadElapsed?.inMilliseconds ?? 0} ms',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -909,7 +1259,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                           ),
                           label: Text(
                             _pickingImage
-                                ? 'Cargando...'
+                                ? 'Comprimiendo imagen...'
                                 : (_imageValue.isEmpty
                                       ? 'Seleccionar foto'
                                       : 'Cambiar foto'),
@@ -923,7 +1273,10 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                               _selectedImageMimeType = null;
                               _selectedImageExtension = null;
                               _imagenUrlCtrl.clear();
-                              setState(() {});
+                              setState(() {
+                                _imageStage = _ImageWorkflowStage.idle;
+                                _imageStageMessage = null;
+                              });
                             },
                             icon: const Icon(Icons.delete_outline),
                             label: const Text('Quitar foto'),
@@ -1123,9 +1476,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
                       const CircularProgressIndicator(),
                       const SizedBox(height: 16),
                       Text(
-                        _submitting
-                            ? 'Guardando producto y publicando imagen...'
-                            : 'Procesando imagen...',
+                        _busyOverlayLabel(),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurface,
                         ),
@@ -1153,10 +1504,27 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
 }
 
 /// Datos de entrada para el procesamiento de imagen en un Isolate.
+enum _ImageWorkflowStage {
+  idle,
+  compressing,
+  uploading,
+  optimized,
+  uploadError,
+}
+
+/// Datos de entrada para el procesamiento de imagen en un Isolate.
 class _ImageInput {
   final Uint8List bytes;
   final String extension;
-  const _ImageInput({required this.bytes, required this.extension});
+  final int maxWidth;
+  final int jpegQuality;
+
+  const _ImageInput({
+    required this.bytes,
+    required this.extension,
+    required this.maxWidth,
+    required this.jpegQuality,
+  });
 }
 
 class _OptimizedImage {
@@ -1169,12 +1537,11 @@ class _OptimizedImage {
 /// Función top-level para procesar/redimensionar una imagen en un Isolate
 /// separado via [compute], evitando bloquear el hilo principal de la UI.
 _OptimizedImage? _processImageIsolate(_ImageInput input) {
-  const maxWidth = 1280;
   final decoded = img.decodeImage(input.bytes);
   if (decoded == null) return null;
 
-  final resized = decoded.width > maxWidth
-      ? img.copyResize(decoded, width: maxWidth)
+  final resized = decoded.width > input.maxWidth
+      ? img.copyResize(decoded, width: input.maxWidth)
       : decoded;
 
   final normalizedExt = input.extension.toLowerCase();
@@ -1182,16 +1549,42 @@ _OptimizedImage? _processImageIsolate(_ImageInput input) {
       resized.hasAlpha || normalizedExt == 'png' || normalizedExt == 'webp';
 
   if (preserveTransparency) {
+    final encoded = Uint8List.fromList(img.encodePng(resized, level: 6));
+    if (encoded.length >= input.bytes.length) {
+      return _OptimizedImage(
+        mimeType: _mimeTypeFromExtension(input.extension),
+        bytes: input.bytes,
+      );
+    }
+    return _OptimizedImage(mimeType: 'image/png', bytes: encoded);
+  }
+
+  final encoded = Uint8List.fromList(
+    img.encodeJpg(resized, quality: input.jpegQuality),
+  );
+  if (encoded.length >= input.bytes.length) {
     return _OptimizedImage(
-      mimeType: 'image/png',
-      bytes: Uint8List.fromList(img.encodePng(resized, level: 6)),
+      mimeType: _mimeTypeFromExtension(input.extension),
+      bytes: input.bytes,
     );
   }
 
-  return _OptimizedImage(
-    mimeType: 'image/jpeg',
-    bytes: Uint8List.fromList(img.encodeJpg(resized, quality: 78)),
-  );
+  return _OptimizedImage(mimeType: 'image/jpeg', bytes: encoded);
+}
+
+String _mimeTypeFromExtension(String extension) {
+  switch (extension.toLowerCase()) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    case 'png':
+    default:
+      return 'image/png';
+  }
 }
 
 /// Modelo editable de una variante dentro del formulario.

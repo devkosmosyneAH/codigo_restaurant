@@ -22,6 +22,7 @@ class MenuRealtimeDatabaseService {
   static const Set<String> _localOnlyKeys = {
     'imagen_local_cache_path',
     'image_base64',
+    'image_temp_path',
   };
 
   final http.Client _httpClient;
@@ -146,18 +147,18 @@ class MenuRealtimeDatabaseService {
     }
 
     final driveUrl = output['drive_public_url'];
-    if (driveUrl is String && !_isPublicUrl(driveUrl)) {
+    if (driveUrl is String && !_isValidRemoteImageUrl(driveUrl)) {
       output.remove('drive_public_url');
     }
 
     final driveFileId = output['drive_file_id'];
-    if (driveFileId is String && driveFileId.trim().isEmpty) {
+    if (driveFileId is String && !_isValidDriveFileId(driveFileId)) {
       output.remove('drive_file_id');
     }
 
     final imageUrl = output['imagen_url'];
-    if (imageUrl is String && !_isPublicUrl(imageUrl)) {
-      if (driveUrl is String && _isPublicUrl(driveUrl)) {
+    if (imageUrl is String && !_isValidRemoteImageUrl(imageUrl)) {
+      if (driveUrl is String && _isValidRemoteImageUrl(driveUrl)) {
         output['imagen_url'] = driveUrl;
       } else {
         output.remove('imagen_url');
@@ -166,7 +167,7 @@ class MenuRealtimeDatabaseService {
 
     if (!output.containsKey('imagen_url') &&
         driveUrl is String &&
-        _isPublicUrl(driveUrl)) {
+        _isValidRemoteImageUrl(driveUrl)) {
       output['imagen_url'] = driveUrl;
     }
 
@@ -213,7 +214,26 @@ class MenuRealtimeDatabaseService {
       if (_isDataUri(trimmed)) {
         return _dropValue;
       }
-      return value;
+
+      if (key == 'imagen_url' || key == 'drive_public_url') {
+        return _isValidRemoteImageUrl(trimmed) ? trimmed : _dropValue;
+      }
+
+      if (key == 'drive_file_id') {
+        return _isValidDriveFileId(trimmed) ? trimmed : _dropValue;
+      }
+
+      final lowerKey = key.toLowerCase();
+      final isImageField =
+          lowerKey.contains('imagen') ||
+          lowerKey.contains('image') ||
+          lowerKey.contains('drive');
+
+      if (isImageField && _isForbiddenImageValue(trimmed)) {
+        return _dropValue;
+      }
+
+      return trimmed;
     }
 
     return value;
@@ -223,12 +243,55 @@ class MenuRealtimeDatabaseService {
     return value.toLowerCase().startsWith('data:');
   }
 
-  bool _isPublicUrl(String value) {
+  bool _isForbiddenImageValue(String value) {
+    final normalized = value.trim();
+    final lower = normalized.toLowerCase();
+
+    if (lower.startsWith('data:') ||
+        lower.startsWith('file://') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('content://') ||
+        lower.contains(';base64,')) {
+      return true;
+    }
+
+    if (normalized.startsWith('/') ||
+        normalized.startsWith('./') ||
+        normalized.startsWith('../')) {
+      return true;
+    }
+
+    return RegExp(r'^[a-zA-Z]:\\').hasMatch(normalized);
+  }
+
+  bool _isValidRemoteImageUrl(String value) {
+    if (_isForbiddenImageValue(value)) return false;
+
     final uri = Uri.tryParse(value.trim());
     if (uri == null) return false;
-    return uri.hasScheme &&
-        (uri.scheme.toLowerCase() == 'https' ||
-            uri.scheme.toLowerCase() == 'http');
+    if (!uri.hasScheme) return false;
+
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'https' && scheme != 'http') return false;
+
+    final host = uri.host.trim().toLowerCase();
+    if (host.isEmpty || host == 'localhost' || host == '127.0.0.1') {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _isValidDriveFileId(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        _isForbiddenImageValue(trimmed)) {
+      return false;
+    }
+
+    return RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(trimmed);
   }
 }
 

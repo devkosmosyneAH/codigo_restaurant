@@ -81,6 +81,7 @@ dependencies:
   # Selección de archivos/imágenes
   file_picker: ^8.0.7
   image: ^4.5.4
+  flutter_image_compress: ^2.4.0
   idb_shim: ^2.6.6+1
 
   # Hashing seguro de PINs

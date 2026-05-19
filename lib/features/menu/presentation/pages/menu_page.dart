@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
+import 'package:restaurant_app/core/config/app_environment.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/features/menu/presentation/providers/drive_connection_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/categoria_form_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/menu_sync_diagnostics_dialog.dart';
@@ -33,6 +35,11 @@ class _MenuPageState extends ConsumerState<MenuPage>
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(menuProvider.notifier).loadMenu();
+      // Verificar sesión Drive silenciosamente al entrar al panel de menú.
+      // Si no hay sesión previa, mostrará el banner de "Conectar Drive".
+      if (AppEnvironment.isDriveConfigured) {
+        ref.read(driveConnectionProvider.notifier).checkSilently();
+      }
     });
   }
 
@@ -341,6 +348,10 @@ class _MenuPageState extends ConsumerState<MenuPage>
                   ),
                 ),
 
+                // ── Banner de estado Drive ──────────────────────────
+                if (AppEnvironment.isDriveConfigured)
+                  _buildDriveBanner(context, ref),
+
                 // ── TabBar ─────────────────────────────────────────
                 if (_tabController != null)
                   ColoredBox(
@@ -517,5 +528,128 @@ class _MenuPageState extends ConsumerState<MenuPage>
       if (val == 'edit') _editarCategoria(categoriaIndex);
       if (val == 'delete') _eliminarCategoria(categoriaIndex);
     });
+  }
+  // ── Banner de Drive ────────────────────────────────────────────
+
+  Widget _buildDriveBanner(BuildContext context, WidgetRef ref) {
+    final drive = ref.watch(driveConnectionProvider);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    if (drive.isConnected) {
+      return Container(
+        width: double.infinity,
+        color: colorScheme.secondaryContainer.withValues(alpha: 0.6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            Icon(
+              Icons.cloud_done_outlined,
+              size: 16,
+              color: colorScheme.onSecondaryContainer,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Google Drive conectado${drive.email != null ? ' · ${drive.email}' : ''}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSecondaryContainer,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (drive.isChecking || drive.isUnknown) {
+      return Container(
+        width: double.infinity,
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Verificando conexión Google Drive...',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Desconectado o error.
+    final isPopupBlocked =
+        drive.isPopupBlocked &&
+        drive.status == DriveConnectionStatus.disconnected;
+    return Container(
+      width: double.infinity,
+      color: colorScheme.errorContainer.withValues(alpha: 0.5),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            Icons.cloud_off_outlined,
+            size: 16,
+            color: colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isPopupBlocked
+                  ? 'Google Drive: popup bloqueado. Permite popups en este navegador y vuelve a intentarlo.'
+                  : (drive.error != null
+                        ? 'Drive no conectado: ${drive.error}'
+                        : 'Google Drive no conectado. Las fotos de productos no se subirán.'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onErrorContainer,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              foregroundColor: colorScheme.onErrorContainer,
+            ),
+            onPressed: () => _connectDriveFromBanner(ref),
+            child: const Text('Conectar', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _connectDriveFromBanner(WidgetRef ref) async {
+    final connected = await ref
+        .read(driveConnectionProvider.notifier)
+        .connectInteractively();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            connected
+                ? 'Google Drive conectado correctamente.'
+                : 'No se pudo conectar Google Drive. Verifica los permisos.',
+          ),
+          backgroundColor: connected
+              ? Theme.of(context).colorScheme.secondary
+              : Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
   }
 }

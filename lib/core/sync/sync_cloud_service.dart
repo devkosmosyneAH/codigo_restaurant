@@ -46,6 +46,11 @@ class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
   static const Map<String, String> _jsonHeaders = {
     'Content-Type': 'application/json',
   };
+  static const Set<String> _localOnlyKeys = {
+    'imagen_local_cache_path',
+    'image_base64',
+    'image_temp_path',
+  };
 
   final http.Client _httpClient;
 
@@ -198,16 +203,142 @@ class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
   Map<String, dynamic> _sanitizePayload(Map<String, dynamic> source) {
     final output = <String, dynamic>{};
     for (final entry in source.entries) {
+      final key = entry.key;
+      if (_localOnlyKeys.contains(key)) continue;
+
       final value = entry.value;
       if (value == null) continue;
 
-      if (value is DateTime) {
-        output[entry.key] = value.toIso8601String();
+      final sanitized = _sanitizeValue(key, value);
+      if (identical(sanitized, _dropValue)) continue;
+      output[key] = sanitized;
+    }
+
+    final driveUrl = output['drive_public_url'];
+    if (driveUrl is String && !_isValidRemoteImageUrl(driveUrl)) {
+      output.remove('drive_public_url');
+    }
+
+    final imageUrl = output['imagen_url'];
+    if (imageUrl is String && !_isValidRemoteImageUrl(imageUrl)) {
+      if (driveUrl is String && _isValidRemoteImageUrl(driveUrl)) {
+        output['imagen_url'] = driveUrl;
       } else {
-        output[entry.key] = value;
+        output.remove('imagen_url');
       }
     }
+
+    final driveFileId = output['drive_file_id'];
+    if (driveFileId is String && !_isValidDriveFileId(driveFileId)) {
+      output.remove('drive_file_id');
+    }
     return output;
+  }
+
+  static const Object _dropValue = Object();
+
+  Object _sanitizeValue(String key, dynamic value) {
+    if (value is DateTime) {
+      return value.toIso8601String();
+    }
+
+    if (value is Map) {
+      final nested = <String, dynamic>{};
+      for (final entry in value.entries) {
+        final nestedKey = entry.key.toString();
+        final sanitized = _sanitizeValue(nestedKey, entry.value);
+        if (identical(sanitized, _dropValue)) continue;
+        nested[nestedKey] = sanitized;
+      }
+      return nested;
+    }
+
+    if (value is List) {
+      final nested = <dynamic>[];
+      for (final item in value) {
+        final sanitized = _sanitizeValue(key, item);
+        if (identical(sanitized, _dropValue)) continue;
+        nested.add(sanitized);
+      }
+      return nested;
+    }
+
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return value;
+
+      if (key == 'imagen_url' || key == 'drive_public_url') {
+        return _isValidRemoteImageUrl(trimmed) ? trimmed : _dropValue;
+      }
+
+      if (key == 'drive_file_id') {
+        return _isValidDriveFileId(trimmed) ? trimmed : _dropValue;
+      }
+
+      final lowerKey = key.toLowerCase();
+      final isImageField =
+          lowerKey.contains('imagen') ||
+          lowerKey.contains('image') ||
+          lowerKey.contains('drive');
+
+      if (isImageField && _isForbiddenBinaryValue(trimmed)) {
+        return _dropValue;
+      }
+
+      return trimmed;
+    }
+
+    return value;
+  }
+
+  bool _isForbiddenBinaryValue(String value) {
+    final normalized = value.trim();
+    final lower = normalized.toLowerCase();
+
+    if (lower.startsWith('data:') ||
+        lower.startsWith('file://') ||
+        lower.startsWith('blob:') ||
+        lower.startsWith('content://') ||
+        lower.contains(';base64,')) {
+      return true;
+    }
+
+    if (normalized.startsWith('/') ||
+        normalized.startsWith('./') ||
+        normalized.startsWith('../')) {
+      return true;
+    }
+
+    return RegExp(r'^[a-zA-Z]:\\').hasMatch(normalized);
+  }
+
+  bool _isValidRemoteImageUrl(String value) {
+    if (_isForbiddenBinaryValue(value)) return false;
+
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null || !uri.hasScheme) return false;
+
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https') return false;
+
+    final host = uri.host.trim().toLowerCase();
+    if (host.isEmpty || host == 'localhost' || host == '127.0.0.1') {
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _isValidDriveFileId(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return false;
+    if (trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        _isForbiddenBinaryValue(trimmed)) {
+      return false;
+    }
+
+    return RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(trimmed);
   }
 
   void _ensureSuccess(

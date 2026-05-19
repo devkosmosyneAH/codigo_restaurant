@@ -48,8 +48,8 @@ class ProductoCard extends ConsumerWidget {
               color: colorScheme.surfaceContainerHighest,
               child: MenuImageLoader(
                 localCachePath: producto.imagenLocalCachePath,
-                primaryImageValue: producto.drivePublicUrl,
-                fallbackImageValue: producto.imagenUrl,
+                primaryImageValue: producto.imagenUrl,
+                fallbackImageValue: producto.drivePublicUrl,
                 fit: BoxFit.cover,
                 cacheWidth: 720,
                 filterQuality: FilterQuality.low,
