@@ -1,7 +1,7 @@
 # robots.txt para Azaktilsa WebPlatform
 # Fecha de última actualización: 2025-08-25
-# Sitio en producción: https://henryorellanasanchez.github.io/BarRestaurantLaPe-a/
-# Sitemap oficial: https://henryorellanasanchez.github.io/BarRestaurantLaPe-a/sitemap.xml
+# Sitio en producción: https://devkosmosyneah.github.io/Restaurant/
+# Sitemap oficial: https://devkosmosyneah.github.io/Restaurant/sitemap.xml
 
 User-agent: *
 # Permitir todo el contenido público
@@ -21,4 +21,4 @@ Disallow: /CNAME
 Disallow: /*?*
 
 # Sitemap principal
-Sitemap: https://henryorellanasanchez.github.io/BarRestaurantLaPe-a/sitemap.xml
+Sitemap: https://devkosmosyneah.github.io/Restaurant/sitemap.xml
