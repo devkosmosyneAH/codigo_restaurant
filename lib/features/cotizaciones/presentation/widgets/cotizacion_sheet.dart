@@ -71,6 +71,8 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
     super.dispose();
   }
 
+  bool _reservaLocal = false;
+
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cotizacionCartProvider);
@@ -133,7 +135,6 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
               ],
             ),
             const Divider(),
-<<<<<<< HEAD
             if (cart.items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
@@ -193,7 +194,7 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
                 ),
               ],
             ],
-=======
+
             Expanded(
               child: SingleChildScrollView(
                 child: Column(
@@ -388,9 +389,9 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
                                 isLoading:
                                     reservasState.isLoading ||
                                     cotizacionesAsync.isLoading,
-                                ocupada: fechaOcupada,
+                                ocupada: reservasEnFecha.isNotEmpty,
                                 total: reservasEnFecha.length,
-                                pendiente: fechaConSolicitudPendiente,
+                                pendiente: cotizacionesPendientes.isNotEmpty,
                                 totalPendientes: cotizacionesPendientes.length,
                               ),
                             ],
@@ -464,7 +465,6 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
               ),
             ),
 
->>>>>>> db694d2967aeaa4b6289cafebe7326a69f03c4bd
             const SizedBox(height: 12),
             _buildContactCard(context),
           ],
