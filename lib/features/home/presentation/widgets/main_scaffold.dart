@@ -11,15 +11,6 @@ import 'package:restaurant_app/features/auth/presentation/providers/auth_provide
 import 'package:restaurant_app/features/pedidos/presentation/providers/pedidos_provider.dart';
 import 'package:restaurant_app/features/pedidos/presentation/widgets/aprobar_pedidos_sheet.dart';
 
-/// Scaffold principal de la aplicación.
-///
-/// Contiene un [NavigationRail] lateral persistente que permite
-/// navegar entre los módulos principales del sistema.
-///
-/// Se adapta automáticamente:
-/// - Pantallas grandes → NavigationRail expandido
-/// - Tablets → NavigationRail compacto
-/// - Móvil → NavigationBar + menú adicional
 class MainScaffold extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -32,7 +23,6 @@ class MainScaffold extends ConsumerStatefulWidget {
 class _MainScaffoldState extends ConsumerState<MainScaffold> {
   Timer? _pollingTimer;
 
-  /// Todos los items de navegación del sistema.
   static const _allNavItems = [
     _NavItem(
       icon: Icons.dashboard_rounded,
@@ -127,7 +117,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   @override
   void initState() {
     super.initState();
-    // Iniciar polling de pedidos pendientes de aprobación cada 20 segundos.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(pedidosProvider.notifier).loadPedidosActivos();
       _pollingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
@@ -149,7 +138,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     final rol = usuario?.rol ?? RolUsuario.mesero;
     final navItems = _itemsForRole(rol);
 
-    // Escuchar pedidos pendientes de aprobación (para badge).
     final pendientesCount = ref.watch(
       pedidosProvider.select((s) => s.totalPendientesAprobacion),
     );
@@ -165,8 +153,10 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
     final textScale = MediaQuery.textScalerOf(context).scale(1);
     final isMobile = screenWidth < 640;
     final isWideScreen = screenWidth >= 1000;
+    final smallHeight = MediaQuery.of(context).size.height < 700;
 
     if (isMobile) {
+      // ... (mantengo tu navegación móvil sin cambios)
       final quickNavItems = navItems.take(4).toList();
       final showMoreMenu = navItems.length > quickNavItems.length;
       final quickSelectedIndex = quickNavItems.indexWhere(
@@ -235,7 +225,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
               );
               return;
             }
-
             context.go(quickNavItems[index].path);
           },
           destinations: [
@@ -265,156 +254,221 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
       );
     }
 
+    // ==================== VERSIÓN DESKTOP / TABLET CON SCROLL ====================
     return Scaffold(
       body: SafeArea(
         child: Row(
           children: [
-            // ── Barra de Navegación Lateral ────────────────────────
-            NavigationRail(
-              extended: isWideScreen,
-              minWidth: 76,
-              minExtendedWidth: 200,
-              backgroundColor: Colors.white,
-              useIndicator: true,
-              indicatorColor: AppColors.primary.withValues(alpha: 0.12),
-              selectedIndex: selectedIndex,
-              onDestinationSelected: (index) {
-                context.go(navItems[index].path);
-              },
-              leading: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: Column(
-                  children: [
-                    Container(
-                      width: isWideScreen ? 84 : 48,
-                      height: isWideScreen ? 84 : 48,
-                      padding: EdgeInsets.all(isWideScreen ? 6 : 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: AppColors.primary.withValues(alpha: 0.18),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.06),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+            // Barra lateral personalizada con scroll
+            Container(
+              width: isWideScreen ? 200 : 76,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(
+                  right: BorderSide(color: Colors.black12, width: 1),
+                ),
+              ),
+              child: Column(
+                children: [
+                  // Leading (Logo + Info usuario) - fijo arriba
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      vertical: smallHeight ? 8 : 16,
+                      horizontal: isWideScreen ? 16 : 8,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: isWideScreen ? 84 : 48,
+                          height: isWideScreen ? 84 : 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.18),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.asset(
+                              'assets/images/logo_la_pena.jpg',
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Icon(
+                                Icons.restaurant_rounded,
+                                color: AppColors.primary,
+                                size: isWideScreen ? 40 : 28,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (isWideScreen) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'La Peña',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          Text(
+                            'Bar & House',
+                            style: TextStyle(
+                              color: AppColors.secondary,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 12,
+                            ),
+                          ),
+                          if (usuario != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              usuario.nombre,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 13,
+                              ),
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              usuario.rol.label,
+                              style: TextStyle(
+                                color: AppColors.secondary,
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          'assets/images/logo_la_pena.jpg',
-                          fit: BoxFit.cover,
-                          cacheWidth: isWideScreen ? 160 : 96,
-                          filterQuality: FilterQuality.medium,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.restaurant_rounded,
-                            color: AppColors.primary,
-                            size: isWideScreen ? 40 : 24,
-                          ),
-                        ),
+                      ],
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+
+                  // Destinos con Scroll
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
+                        children: navItems.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final item = entry.value;
+                          final isSelected = index == selectedIndex;
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Material(
+                              color: isSelected
+                                  ? AppColors.primary.withValues(alpha: 0.12)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => context.go(item.path),
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: isWideScreen ? 16 : 0,
+                                    vertical: 12,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: isWideScreen
+                                        ? MainAxisAlignment.start
+                                        : MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        item.icon,
+                                        color: isSelected
+                                            ? AppColors.primary
+                                            : Colors.black87,
+                                        size: isWideScreen ? 26 : 24,
+                                      ),
+                                      if (isWideScreen) ...[
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Text(
+                                            item.label,
+                                            style: TextStyle(
+                                              color: isSelected
+                                                  ? AppColors.primary
+                                                  : Colors.black87,
+                                              fontWeight: isSelected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w500,
+                                              fontSize: 15,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                      // Badge para pedidos
+                                      if (item.path == AppRouter.pedidos &&
+                                          puedeAprobarPedidos &&
+                                          pendientesCount > 0)
+                                        Badge(
+                                          label: Text('$pendientesCount'),
+                                          backgroundColor: Colors.orange,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ),
-                    if (isWideScreen) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        'La Peña',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        'Bar & House',
-                        style: TextStyle(
+                  ),
+
+                  // Trailing (botones inferiores)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (puedeAprobarPedidos && pendientesCount > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: IconButton(
+                              icon: Badge(
+                                label: Text('$pendientesCount'),
+                                backgroundColor: Colors.orange,
+                                child: const Icon(
+                                  Icons.pending_actions_rounded,
+                                ),
+                              ),
+                              color: Colors.orange,
+                              tooltip: 'Pedidos por aprobar',
+                              onPressed: () =>
+                                  AprobarPedidosSheet.show(context),
+                            ),
+                          ),
+                        IconButton(
+                          icon: const Icon(Icons.logout_rounded),
+                          tooltip: 'Cerrar sesión',
                           color: AppColors.secondary,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 11,
-                        ),
-                      ),
-                      if (usuario != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          usuario.nombre,
-                          style: TextStyle(
-                            color: Colors.black87,
-                            fontWeight: FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          usuario.rol.label,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.secondary,
-                            fontSize: 11,
-                          ),
+                          onPressed: () async => await auth.logout(),
                         ),
                       ],
-                    ],
-                  ],
-                ),
-              ),
-              trailing: Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (puedeAprobarPedidos && pendientesCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Badge(
-                          label: Text('$pendientesCount'),
-                          backgroundColor: Colors.orange,
-                          child: IconButton(
-                            icon: const Icon(Icons.pending_actions_rounded),
-                            tooltip: 'Pedidos por aprobar',
-                            color: Colors.orange,
-                            onPressed: () => AprobarPedidosSheet.show(context),
-                          ),
-                        ),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.logout_rounded),
-                      tooltip: 'Cerrar sesión',
-                      color: AppColors.secondary,
-                      onPressed: () async {
-                        await auth.logout();
-                      },
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              destinations: navItems
-                  .map(
-                    (item) => NavigationRailDestination(
-                      icon:
-                          item.path == AppRouter.pedidos &&
-                              puedeAprobarPedidos &&
-                              pendientesCount > 0
-                          ? Badge(
-                              label: Text('$pendientesCount'),
-                              backgroundColor: Colors.orange,
-                              child: Icon(item.icon),
-                            )
-                          : Icon(item.icon),
-                      selectedIcon: Icon(item.icon, color: AppColors.primary),
-                      label: Text(item.label, overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
             ),
 
-            // ── Separador visual ──────────────────────────────────
             const VerticalDivider(thickness: 1, width: 1),
-
-            // ── Contenido principal ───────────────────────────────
             Expanded(child: widget.child),
           ],
         ),
@@ -423,7 +477,6 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   }
 }
 
-/// Modelo interno de un item de navegación.
 class _NavItem {
   final IconData icon;
   final String label;

@@ -109,6 +109,7 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Header (fijo)
             Row(
               children: [
                 IconButton(
@@ -132,6 +133,7 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
               ],
             ),
             const Divider(),
+<<<<<<< HEAD
             if (cart.items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
@@ -191,6 +193,278 @@ class _CotizacionSheetState extends ConsumerState<CotizacionSheet> {
                 ),
               ],
             ],
+=======
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (cart.items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Text('Agrega productos para cotizar.'),
+                      ),
+                    if (cart.items.isNotEmpty)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.onDark.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.all(Radius.circular(20)),
+                        ),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          itemCount: cart.items.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final item = cart.items[i];
+                            final unitario = item.precioUnitario;
+                            final tieneVariantes = item.producto.tieneVariantes;
+                            final subtitle = tieneVariantes
+                                ? 'Desde ${AppConstants.currencySymbol}${unitario.toStringAsFixed(2)} · ${item.producto.variantes.length} opciones'
+                                : '${AppConstants.currencySymbol}${unitario.toStringAsFixed(2)}';
+                            return ListTile(
+                              title: Text(item.producto.nombre),
+                              subtitle: Text(subtitle),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    onPressed: () => ref
+                                        .read(cotizacionCartProvider.notifier)
+                                        .decrement(item.producto.id),
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline,
+                                    ),
+                                  ),
+                                  Text('${item.cantidad}'),
+                                  IconButton(
+                                    onPressed: () => ref
+                                        .read(cotizacionCartProvider.notifier)
+                                        .increment(item.producto.id),
+                                    icon: const Icon(Icons.add_circle_outline),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    if (cart.items.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Subtotal',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          Text(
+                            '${AppConstants.currencySymbol}${cart.subtotal.toStringAsFixed(2)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Total estimado',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                          Text(
+                            '${AppConstants.currencySymbol}${cart.subtotal.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Form(
+                        key: _formKey,
+                        child: Column(
+                          children: [
+                            TextFormField(
+                              controller: _cedulaCtrl,
+                              decoration: InputDecoration(
+                                labelText: 'Cédula',
+                                prefixIcon: const Icon(Icons.badge_outlined),
+                                suffixIcon: _buscandoCliente
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: Padding(
+                                          padding: EdgeInsets.all(10),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      )
+                                    : _clienteEncontrado
+                                    ? const Icon(
+                                        Icons.verified_user_rounded,
+                                        color: Colors.green,
+                                      )
+                                    : null,
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(13),
+                              ],
+                              validator: (v) {
+                                final value = v?.trim() ?? '';
+                                if (value.isEmpty) return 'Requerido';
+                                if (!Cliente.esCedulaValida(value)) {
+                                  return 'Cédula/RUC inválido';
+                                }
+                                return null;
+                              },
+                              onChanged: _lookupCliente,
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _nombreCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Nombre',
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Requerido'
+                                  : null,
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _telefonoCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Telefono',
+                                prefixIcon: Icon(Icons.call_outlined),
+                              ),
+                              keyboardType: TextInputType.phone,
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Requerido'
+                                  : null,
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _emailCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Correo',
+                                prefixIcon: Icon(Icons.email_outlined),
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                              validator: (v) => _validEmail(v)
+                                  ? null
+                                  : 'Correo electronico invalido',
+                            ),
+                            const SizedBox(height: 8),
+                            SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Reservar local para evento'),
+                              value: _reservaLocal,
+                              onChanged: (val) =>
+                                  setState(() => _reservaLocal = val),
+                            ),
+                            TextFormField(
+                              controller: _fechaEventoCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Fecha del evento',
+                                prefixIcon: Icon(Icons.event_outlined),
+                              ),
+                              readOnly: true,
+                              onTap: () => _pickFechaEvento(context),
+                              validator: (v) {
+                                if (_reservaLocal &&
+                                    (v == null || v.trim().isEmpty)) {
+                                  return 'Indica la fecha del evento';
+                                }
+                                return null;
+                              },
+                            ),
+                            if (_reservaLocal && _fechaEvento != null) ...[
+                              const SizedBox(height: 6),
+                              _buildDisponibilidad(
+                                isLoading:
+                                    reservasState.isLoading ||
+                                    cotizacionesAsync.isLoading,
+                                ocupada: fechaOcupada,
+                                total: reservasEnFecha.length,
+                                pendiente: fechaConSolicitudPendiente,
+                                totalPendientes: cotizacionesPendientes.length,
+                              ),
+                            ],
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _personasCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Cantidad de personas (opcional)',
+                                prefixIcon: Icon(Icons.groups_outlined),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (v) {
+                                if (_reservaLocal &&
+                                    (v == null || v.trim().isEmpty)) {
+                                  return 'Indica la cantidad de personas';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _comidaCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Comida o menu preferido (opcional)',
+                                prefixIcon: Icon(
+                                  Icons.restaurant_menu_outlined,
+                                ),
+                              ),
+                              maxLines: 2,
+                            ),
+                            const SizedBox(height: 10),
+                            TextFormField(
+                              controller: _notasCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Notas adicionales (opcional)',
+                                prefixIcon: Icon(Icons.notes_outlined),
+                              ),
+                              maxLines: 2,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: cotState.isSaving
+                              ? null
+                              : _crearCotizacion,
+                          child: cotState.isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Text('Generar cotizacion'),
+                        ),
+                      ),
+                      if (cotState.errorMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          cotState.errorMessage!,
+                          style: const TextStyle(color: AppColors.error),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+            ),
+
+>>>>>>> db694d2967aeaa4b6289cafebe7326a69f03c4bd
             const SizedBox(height: 12),
             _buildContactCard(context),
           ],

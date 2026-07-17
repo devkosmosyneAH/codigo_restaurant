@@ -56,13 +56,19 @@ class ProductoCard extends ConsumerWidget {
                 placeholder: _placeholder(colorScheme),
               ),
             ),
+            // Reemplaza todo el Expanded(child: Padding(...)) actual con esto:
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.fromLTRB(
+                  10,
+                  8,
+                  10,
+                  8,
+                ), // padding más ajustado
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Nombre + toggle ────────────────────────────
+                    // Nombre + Switch (siempre arriba)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -71,17 +77,15 @@ class ProductoCard extends ConsumerWidget {
                             producto.nombre,
                             style: theme.textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.bold,
-                              decoration: disponible
-                                  ? null
-                                  : TextDecoration.lineThrough,
+                              fontSize: 12.5, // reducido para móvil
                             ),
-                            maxLines: 2,
+                            maxLines: 1, // ← importante en móviles
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 4),
                         SizedBox(
-                          width: 36,
+                          width: 32,
                           height: 20,
                           child: Switch.adaptive(
                             value: disponible,
@@ -95,87 +99,106 @@ class ProductoCard extends ConsumerWidget {
                         ),
                       ],
                     ),
+
                     const SizedBox(height: 4),
 
-                    // ── Descripción ────────────────────────────────
-                    if (producto.descripcion != null &&
-                        producto.descripcion!.isNotEmpty) ...[
-                      Text(
-                        producto.descripcion!,
+                    // Descripción (flexible)
+                    Expanded(
+                      child: Text(
+                        producto.descripcion?.trim() ?? '',
                         style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
                           color: colorScheme.onSurfaceVariant,
+                          height: 1.15,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 4),
-                    ],
-
-                    const Spacer(),
-
-                    // ── Chips: categoría + variantes ───────────────
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        if (categoriaNombre != null)
-                          Chip(
-                            label: Text(
-                              categoriaNombre!,
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        if (producto.tieneVariantes)
-                          Chip(
-                            avatar: const Icon(Icons.tune, size: 12),
-                            label: Text(
-                              '${producto.variantes.length} vars.',
-                              style: const TextStyle(fontSize: 10),
-                            ),
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            materialTapTargetSize:
-                                MaterialTapTargetSize.shrinkWrap,
-                          ),
-                      ],
                     ),
 
-                    // ── Precio + acciones ──────────────────────────
+                    const SizedBox(height: 6),
+
+                    // Chips + Precio + Botones (todo en una fila compacta)
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        // Chips (compactos)
+                        Expanded(
+                          child: Wrap(
+                            spacing: 4,
+                            runSpacing: 2,
+                            children: [
+                              if (categoriaNombre != null)
+                                Chip(
+                                  label: Text(
+                                    categoriaNombre!,
+                                    style: const TextStyle(fontSize: 9),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 0,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              if (producto.tieneVariantes)
+                                Chip(
+                                  avatar: const Icon(Icons.tune, size: 10),
+                                  label: Text(
+                                    '${producto.variantes.length} vars.',
+                                    style: const TextStyle(fontSize: 9),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 0,
+                                  ),
+                                  visualDensity: VisualDensity.compact,
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                            ],
+                          ),
+                        ),
+
+                        // Precio
                         Text(
                           '\$${producto.precioMinimo.toStringAsFixed(2)}',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: colorScheme.primary,
                             fontWeight: FontWeight.bold,
+                            fontSize: 14,
                           ),
                         ),
                         if (producto.tieneVariantes)
                           Text(
                             ' desde',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
+                              fontSize: 10.5,
                             ),
                           ),
-                        const Spacer(),
-                        // Editar
+
+                        const SizedBox(width: 4),
+
+                        // Botones edición/eliminar (más pequeños)
                         IconButton(
-                          icon: const Icon(Icons.edit_outlined),
-                          iconSize: 18,
+                          icon: const Icon(Icons.edit_outlined, size: 16),
                           visualDensity: VisualDensity.compact,
-                          tooltip: 'Editar',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 28,
+                            minHeight: 28,
+                          ),
                           onPressed: onEdit,
                         ),
-                        // Eliminar
                         IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          iconSize: 18,
+                          icon: const Icon(Icons.delete_outline, size: 16),
                           visualDensity: VisualDensity.compact,
-                          tooltip: 'Eliminar',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 28,
+                            minHeight: 28,
+                          ),
                           color: colorScheme.error,
                           onPressed: onDelete,
                         ),
