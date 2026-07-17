@@ -84,7 +84,6 @@ class AuthChangeNotifier extends ChangeNotifier {
           maxAttempts: _maxFailedAttempts,
           lockDuration: _pinLockDuration,
         );
-        notifyListeners();
 
         if (attempts >= _maxFailedAttempts) {
           await _audit('login_lockout_applied', detail: {'attempts': attempts});
@@ -101,6 +100,7 @@ class AuthChangeNotifier extends ChangeNotifier {
       }
 
       await SessionService.clearPinSecurityState();
+      final previousUser = _usuario;
       _usuario = usuario;
       await SessionService.saveUserSession(_toSessionMap(usuario));
       await _audit(
@@ -113,7 +113,9 @@ class AuthChangeNotifier extends ChangeNotifier {
         userId: usuario.id,
         rol: usuario.rol.value,
       );
-      notifyListeners();
+      if (previousUser != _usuario) {
+        notifyListeners();
+      }
       return null;
     });
   }
@@ -137,6 +139,7 @@ class AuthChangeNotifier extends ChangeNotifier {
         return;
       }
 
+      final previousUser = _usuario;
       _usuario = usuario;
       await _audit('session_restored', userId: usuario.id);
       sl<TenantContext>().setFromSession(
@@ -144,7 +147,9 @@ class AuthChangeNotifier extends ChangeNotifier {
         userId: usuario.id,
         rol: usuario.rol.value,
       );
-      notifyListeners();
+      if (previousUser != _usuario) {
+        notifyListeners();
+      }
     } catch (_) {
       await _audit('session_restore_failed');
       await SessionService.logout();
@@ -157,10 +162,13 @@ class AuthChangeNotifier extends ChangeNotifier {
     if (current != null) {
       await _audit('logout', userId: current.id);
     }
+    final hadUser = _usuario != null;
     _usuario = null;
     sl<TenantContext>().clear();
     await SessionService.logout();
-    notifyListeners();
+    if (hadUser) {
+      notifyListeners();
+    }
   }
 
   Map<String, dynamic> _toSessionMap(Usuario usuario) {

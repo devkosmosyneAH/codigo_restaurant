@@ -8,6 +8,8 @@ import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/core/theme/app_colors.dart';
 import 'package:restaurant_app/features/cotizaciones/presentation/providers/cotizacion_cart_provider.dart';
 import 'package:restaurant_app/features/cotizaciones/presentation/widgets/cotizacion_sheet.dart';
+import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
+import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/public_producto_card.dart';
 import 'package:restaurant_app/features/mesas/presentation/providers/llamados_provider.dart';
@@ -172,6 +174,9 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
           ? const Center(child: CircularProgressIndicator())
           : _buildBody(context, state),
       bottomNavigationBar: isMenuEnabled ? _buildBottomBar(context) : null,
+      floatingActionButton: isMenuEnabled && cart.totalItems > 0
+          ? _buildCartFab(context, totalItems: cart.totalItems)
+          : null,
     );
   }
 
@@ -236,15 +241,15 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
     final cart = ref.watch(cotizacionCartProvider);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
       children: [
         _MenuReveal(child: _buildHeroCard(context)),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         _MenuReveal(
           delay: const Duration(milliseconds: 70),
           child: _buildPromoBanner(context),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         _MenuReveal(
           delay: const Duration(milliseconds: 100),
           child: Row(
@@ -291,11 +296,11 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
             builder: (context, constraints) {
               final width = constraints.maxWidth;
               final maxExtent = width < 520
-                  ? 220.0
+                  ? 210.0
                   : width < 900
-                  ? 260.0
-                  : 300.0;
-              final aspect = width < 520 ? 0.74 : 0.76;
+                  ? 250.0
+                  : 285.0;
+              final aspect = width < 520 ? 0.71 : 0.75;
               return AnimatedSwitcher(
                 duration: const Duration(milliseconds: 260),
                 switchInCurve: Curves.easeOutCubic,
@@ -317,8 +322,8 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
                   physics: const NeverScrollableScrollPhysics(),
                   gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: maxExtent,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
                     childAspectRatio: aspect,
                   ),
                   itemBuilder: (_, i) {
@@ -329,9 +334,17 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
                     return PublicProductoCard(
                       producto: producto,
                       cantidad: count,
+                      onOpenOptions: () =>
+                          _openProductoOptions(context, producto),
                       onAdd: () => ref
                           .read(cotizacionCartProvider.notifier)
                           .addProducto(producto),
+                      onIncrement: () => ref
+                          .read(cotizacionCartProvider.notifier)
+                          .incrementProducto(producto),
+                      onDecrement: () => ref
+                          .read(cotizacionCartProvider.notifier)
+                          .decrementProducto(producto.id),
                     );
                   },
                 ),
@@ -479,7 +492,7 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Promociones del dia: pregunta a tu mesero por combos y bebidas.',
+              'Promociones del dia: pregunta por combos y bebidas.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: AppColors.textPrimary,
                 height: 1.35,
@@ -504,11 +517,11 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
             child: FilledButton.icon(
               onPressed: () =>
                   CotizacionSheet.show(context, mesaId: widget.mesaId),
-              icon: const Icon(Icons.request_quote_outlined),
+              icon: const Icon(Icons.shopping_cart_checkout_rounded),
               label: Text(
                 cart.totalItems > 0
-                    ? 'Cotizar (${cart.totalItems})'
-                    : 'Cotizar',
+                    ? 'Resumen (${cart.totalItems})'
+                    : 'Resumen del pedido',
               ),
             ),
           ),
@@ -525,6 +538,105 @@ class _MenuPublicPageState extends ConsumerState<MenuPublicPage>
         ],
       ),
     );
+  }
+
+  Widget _buildCartFab(BuildContext context, {required int totalItems}) {
+    return FloatingActionButton.extended(
+      onPressed: () => CotizacionSheet.show(context, mesaId: widget.mesaId),
+      icon: const Icon(Icons.shopping_cart_rounded),
+      label: Text('🛒 $totalItems productos'),
+      backgroundColor: AppColors.primary,
+      foregroundColor: Colors.white,
+    );
+  }
+
+  Future<void> _openProductoOptions(
+    BuildContext context,
+    Producto producto,
+  ) async {
+    final variantesActivas = producto.variantes.where((v) => v.activo).toList();
+    if (variantesActivas.isEmpty) {
+      ref.read(cotizacionCartProvider.notifier).addProducto(producto);
+      return;
+    }
+
+    final seleccionada = await showModalBottomSheet<Variante>(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  producto.nombre,
+                  style: Theme.of(
+                    sheetContext,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                if (producto.descripcion != null &&
+                    producto.descripcion!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    producto.descripcion!,
+                    style: Theme.of(sheetContext).textTheme.bodyMedium
+                        ?.copyWith(color: AppColors.textSecondary),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                Text(
+                  'Elige una opcion para agregarla al pedido.',
+                  style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...variantesActivas.map(
+                  (variante) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE6DDCF)),
+                    ),
+                    child: ListTile(
+                      title: Text(
+                        variante.nombre,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        '${AppConstants.currencySymbol}${variante.precio.toStringAsFixed(2)}',
+                      ),
+                      trailing: FilledButton.icon(
+                        onPressed: () =>
+                            Navigator.of(sheetContext).pop(variante),
+                        icon: const Icon(Icons.add_rounded),
+                        label: const Text('Agregar'),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (seleccionada == null) return;
+    ref
+        .read(cotizacionCartProvider.notifier)
+        .addProducto(
+          producto,
+          variante: seleccionada,
+          precioUnitario: seleccionada.precio,
+        );
   }
 
   Future<void> _callWaiter() async {

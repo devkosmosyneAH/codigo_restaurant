@@ -157,11 +157,13 @@ class AppRouter {
 
       if (!isLoggedIn && !isLoginRoute) return login;
       if (isLoggedIn && isLoginRoute) {
-        return homeRouteForRole(auth.usuario!.rol);
+        final target = homeRouteForRole(auth.usuario!.rol);
+        return state.matchedLocation == target ? null : target;
       }
       if (isLoggedIn &&
           !isRouteAllowedForRole(auth.usuario!.rol, state.matchedLocation)) {
-        return homeRouteForRole(auth.usuario!.rol);
+        final target = homeRouteForRole(auth.usuario!.rol);
+        return state.matchedLocation == target ? null : target;
       }
       return null;
     },

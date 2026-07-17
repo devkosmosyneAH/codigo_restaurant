@@ -1,21 +1,48 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
+import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
 
 /// Item de carrito para cotizacion.
 class CotizacionCartItem {
   final Producto producto;
   final int cantidad;
+  final String? varianteId;
+  final String? varianteNombre;
+  final double _precioUnitario;
 
-  const CotizacionCartItem({required this.producto, required this.cantidad});
+  const CotizacionCartItem({
+    required this.producto,
+    required this.cantidad,
+    required double precioUnitario,
+    this.varianteId,
+    this.varianteNombre,
+  }) : _precioUnitario = precioUnitario;
 
-  double get precioUnitario => producto.precioReferencial;
+  double get precioUnitario => _precioUnitario;
+
+  bool get hasVariante =>
+      varianteId != null &&
+      varianteNombre != null &&
+      varianteNombre!.isNotEmpty;
+
+  String get nombreLinea =>
+      hasVariante ? '${producto.nombre} (${varianteNombre!})' : producto.nombre;
 
   double get subtotal => cantidad * precioUnitario;
 
-  CotizacionCartItem copyWith({Producto? producto, int? cantidad}) {
+  CotizacionCartItem copyWith({
+    Producto? producto,
+    int? cantidad,
+    String? varianteId,
+    String? varianteNombre,
+    double? precioUnitario,
+  }) {
     return CotizacionCartItem(
       producto: producto ?? this.producto,
       cantidad: cantidad ?? this.cantidad,
+      varianteId: varianteId ?? this.varianteId,
+      varianteNombre: varianteNombre ?? this.varianteNombre,
+      precioUnitario: precioUnitario ?? this.precioUnitario,
     );
   }
 }
@@ -39,15 +66,29 @@ class CotizacionCartState {
 class CotizacionCartNotifier extends StateNotifier<CotizacionCartState> {
   CotizacionCartNotifier() : super(const CotizacionCartState());
 
-  void addProducto(Producto producto) {
+  void addProducto(
+    Producto producto, {
+    Variante? variante,
+    double? precioUnitario,
+  }) {
+    final varianteId = variante?.id;
+    final varianteNombre = variante?.nombre;
+    final unitario =
+        precioUnitario ?? variante?.precio ?? producto.precioReferencial;
     final existingIndex = state.items.indexWhere(
-      (i) => i.producto.id == producto.id,
+      (i) => i.producto.id == producto.id && i.varianteId == varianteId,
     );
     if (existingIndex == -1) {
       state = state.copyWith(
         items: [
           ...state.items,
-          CotizacionCartItem(producto: producto, cantidad: 1),
+          CotizacionCartItem(
+            producto: producto,
+            cantidad: 1,
+            varianteId: varianteId,
+            varianteNombre: varianteNombre,
+            precioUnitario: unitario,
+          ),
         ],
       );
       return;
@@ -59,9 +100,9 @@ class CotizacionCartNotifier extends StateNotifier<CotizacionCartState> {
     state = state.copyWith(items: updated);
   }
 
-  void increment(String productoId) {
+  void increment(String productoId, {String? varianteId}) {
     final updated = state.items.map((item) {
-      if (item.producto.id == productoId) {
+      if (item.producto.id == productoId && item.varianteId == varianteId) {
         return item.copyWith(cantidad: item.cantidad + 1);
       }
       return item;
@@ -69,10 +110,10 @@ class CotizacionCartNotifier extends StateNotifier<CotizacionCartState> {
     state = state.copyWith(items: updated);
   }
 
-  void decrement(String productoId) {
+  void decrement(String productoId, {String? varianteId}) {
     final updated = <CotizacionCartItem>[];
     for (final item in state.items) {
-      if (item.producto.id == productoId) {
+      if (item.producto.id == productoId && item.varianteId == varianteId) {
         final nextQty = item.cantidad - 1;
         if (nextQty > 0) {
           updated.add(item.copyWith(cantidad: nextQty));
@@ -84,9 +125,48 @@ class CotizacionCartNotifier extends StateNotifier<CotizacionCartState> {
     state = state.copyWith(items: updated);
   }
 
-  void remove(String productoId) {
+  void incrementProducto(Producto producto) {
+    final index = state.items.indexWhere(
+      (item) => item.producto.id == producto.id,
+    );
+    if (index == -1) {
+      addProducto(producto);
+      return;
+    }
+
+    final updated = [...state.items];
+    final item = updated[index];
+    updated[index] = item.copyWith(cantidad: item.cantidad + 1);
+    state = state.copyWith(items: updated);
+  }
+
+  void decrementProducto(String productoId) {
+    final updated = [...state.items];
+    for (var i = updated.length - 1; i >= 0; i--) {
+      final item = updated[i];
+      if (item.producto.id != productoId) {
+        continue;
+      }
+      final nextQty = item.cantidad - 1;
+      if (nextQty > 0) {
+        updated[i] = item.copyWith(cantidad: nextQty);
+      } else {
+        updated.removeAt(i);
+      }
+      state = state.copyWith(items: updated);
+      return;
+    }
+  }
+
+  void remove(String productoId, {String? varianteId}) {
     state = state.copyWith(
-      items: state.items.where((i) => i.producto.id != productoId).toList(),
+      items: state.items
+          .where(
+            (i) =>
+                i.producto.id != productoId ||
+                (varianteId != null && i.varianteId != varianteId),
+          )
+          .toList(),
     );
   }
 
@@ -94,11 +174,19 @@ class CotizacionCartNotifier extends StateNotifier<CotizacionCartState> {
     state = state.copyWith(items: []);
   }
 
-  int countFor(String productoId) {
+  int countFor(String productoId, {String? varianteId}) {
     for (final item in state.items) {
-      if (item.producto.id == productoId) return item.cantidad;
+      if (item.producto.id == productoId && item.varianteId == varianteId) {
+        return item.cantidad;
+      }
     }
     return 0;
+  }
+
+  int totalForProducto(String productoId) {
+    return state.items
+        .where((item) => item.producto.id == productoId)
+        .fold(0, (sum, item) => sum + item.cantidad);
   }
 }
 

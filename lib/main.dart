@@ -40,7 +40,11 @@ Future<void> main() async {
   await sl<ActivationChangeNotifier>().loadStatus();
 
   // Restaurar sesión local si existe para entrar directo al rol anterior.
-  await sl<AuthChangeNotifier>().restoreSession();
+  // Se retrasa hasta el primer frame para que GoRouter ya esté montado y
+  // evitar redirecciones prematuras durante la inicialización.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    sl<AuthChangeNotifier>().restoreSession();
+  });
 
   // Iniciar sincronizacion hibrida automatica (push + pull realtime).
   await sl<HybridSyncOrchestrator>().start();
