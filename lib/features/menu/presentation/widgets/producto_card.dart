@@ -28,6 +28,11 @@ class ProductoCard extends ConsumerWidget {
     final notifier = ref.read(menuProvider.notifier);
 
     final bool disponible = producto.disponible;
+    final primaryImageValue = (producto.imagenUrl?.trim().isNotEmpty ?? false)
+        ? producto.imagenUrl
+        : (producto.driveFileId?.trim().isNotEmpty ?? false)
+        ? 'drive:${producto.driveFileId!.trim()}'
+        : producto.drivePublicUrl;
 
     return Card(
       elevation: 2,
@@ -48,7 +53,7 @@ class ProductoCard extends ConsumerWidget {
               color: colorScheme.surfaceContainerHighest,
               child: MenuImageLoader(
                 localCachePath: producto.imagenLocalCachePath,
-                primaryImageValue: producto.imagenUrl,
+                primaryImageValue: primaryImageValue,
                 fallbackImageValue: producto.drivePublicUrl,
                 fit: BoxFit.cover,
                 cacheWidth: 720,

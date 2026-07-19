@@ -4,8 +4,9 @@ import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/domain/enums.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
+import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/usuarios/domain/entities/usuario.dart';
-import 'package:restaurant_app/features/usuarios/domain/usecases/usuario_usecases.dart';
+import 'package:restaurant_app/services/firebase_auth_service.dart';
 import 'package:restaurant_app/services/session_service.dart';
 
 /// Maneja la sesión activa del usuario autenticado.
@@ -15,9 +16,6 @@ import 'package:restaurant_app/services/session_service.dart';
 class AuthChangeNotifier extends ChangeNotifier {
   AuthChangeNotifier();
 
-  static const int _maxFailedAttempts = 3;
-  static const Duration _pinLockDuration = Duration(minutes: 5);
-
   Usuario? _usuario;
 
   /// El usuario actualmente autenticado, o null si no hay sesión.
@@ -25,11 +23,6 @@ class AuthChangeNotifier extends ChangeNotifier {
 
   /// Verdadero si hay un usuario autenticado.
   bool get isAuthenticated => _usuario != null;
-
-  String _lockMessage(Duration remaining) {
-    final seconds = remaining.inSeconds <= 0 ? 1 : remaining.inSeconds;
-    return 'Acceso bloqueado temporalmente. Intenta de nuevo en ${seconds}s.';
-  }
 
   bool _canUseActivatedApp() {
     if (!sl.isRegistered<ActivationChangeNotifier>()) return true;
@@ -53,71 +46,82 @@ class AuthChangeNotifier extends ChangeNotifier {
     );
   }
 
-  /// Autentica al usuario mediante PIN de 4 dígitos.
-  ///
-  /// Retorna `null` en caso de éxito, o un mensaje de error.
-  Future<String?> loginWithPin(String pin) async {
+  Future<void> _connectDriveAutomatically() async {
+    if (!sl.isRegistered<DriveMenuConnectionService>()) return;
+
+    try {
+      await sl<DriveMenuConnectionService>().restoreSessionSilently();
+    } catch (_) {
+      // El login debe seguir aunque Drive no esté disponible en este momento.
+    }
+  }
+
+  /// Autentica al usuario mediante Firebase Authentication.
+  Future<String?> loginWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
     if (!_canUseActivatedApp()) {
       await _audit('login_blocked_activation');
       return sl<ActivationChangeNotifier>().status.message;
     }
 
-    final now = DateTime.now();
-    final lockUntil = await SessionService.getPinLockUntil();
-
-    if (lockUntil != null && lockUntil.isAfter(now)) {
-      await _audit(
-        'login_blocked_lockout',
-        detail: {'remaining_seconds': lockUntil.difference(now).inSeconds},
-      );
-      return _lockMessage(lockUntil.difference(now));
+    final authService = FirebaseAuthService();
+    final error = await authService.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+    if (error != null) {
+      await _audit('login_failed_firebase', detail: {'email': email});
+      return error;
     }
 
-    final result = await sl<VerificarPin>()(
-      AppConstants.defaultRestaurantId,
-      pin,
+    final session = await authService.getCurrentAuthenticatedUser();
+    if (session == null) {
+      await _audit('login_failed_session');
+      return 'No fue posible restaurar la sesión del usuario.';
+    }
+
+    await SessionService.clearPinSecurityState();
+    final previousUser = _usuario;
+    final usuario = Usuario(
+      id: session['uid'] as String? ?? 'firebase-user',
+      restaurantId:
+          session['restaurantId'] as String? ??
+          AppConstants.defaultRestaurantId,
+      nombre: session['name'] as String? ?? 'Usuario',
+      email: session['email'] as String?,
+      pin: null,
+      rol: RolUsuario.fromString(session['role'] as String? ?? 'administrador'),
+      activo: true,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
     );
 
-    return result.fold((failure) => failure.message, (usuario) async {
-      if (usuario == null || !usuario.activo) {
-        final attempts = await SessionService.registerFailedPinAttempt(
-          maxAttempts: _maxFailedAttempts,
-          lockDuration: _pinLockDuration,
-        );
+    _usuario = usuario;
+    await _audit(
+      'login_success',
+      userId: usuario.id,
+      detail: {'rol': usuario.rol.value},
+    );
+    sl<TenantContext>().setFromSession(
+      restaurantId: usuario.restaurantId,
+      userId: usuario.id,
+      rol: usuario.rol.value,
+    );
+    await _connectDriveAutomatically();
+    if (previousUser != _usuario) {
+      notifyListeners();
+    }
+    return null;
+  }
 
-        if (attempts >= _maxFailedAttempts) {
-          await _audit('login_lockout_applied', detail: {'attempts': attempts});
-          return 'Demasiados intentos fallidos. Acceso bloqueado por 5 minutos.';
-        }
-
-        final remaining = _maxFailedAttempts - attempts;
-        final intentoLabel = remaining == 1 ? 'intento' : 'intentos';
-        await _audit(
-          'login_failed_pin',
-          detail: {'attempts': attempts, 'remaining': remaining},
-        );
-        return 'PIN incorrecto. Te quedan $remaining $intentoLabel antes del bloqueo.';
-      }
-
-      await SessionService.clearPinSecurityState();
-      final previousUser = _usuario;
-      _usuario = usuario;
-      await SessionService.saveUserSession(_toSessionMap(usuario));
-      await _audit(
-        'login_success',
-        userId: usuario.id,
-        detail: {'rol': usuario.rol.value},
-      );
-      sl<TenantContext>().setFromSession(
-        restaurantId: usuario.restaurantId,
-        userId: usuario.id,
-        rol: usuario.rol.value,
-      );
-      if (previousUser != _usuario) {
-        notifyListeners();
-      }
-      return null;
-    });
+  /// Compatibilidad con el flujo anterior: utiliza Firebase Auth para validar el acceso.
+  Future<String?> loginWithPin(String pin) async {
+    if (pin.isEmpty) {
+      return 'Ingresa tus credenciales de Firebase.';
+    }
+    return 'El acceso por PIN fue reemplazado por Firebase Authentication. Usa el formulario de correo y contraseña.';
   }
 
   /// Restaura una sesión previamente guardada si sigue siendo válida.
@@ -129,7 +133,12 @@ class AuthChangeNotifier extends ChangeNotifier {
     }
 
     final session = await SessionService.getCurrentUserSession();
-    if (session == null) return;
+    if (session == null) {
+      final firebaseSession = await FirebaseAuthService()
+          .restoreSessionFromFirebase();
+      if (firebaseSession == null) return;
+      return;
+    }
 
     try {
       final usuario = _fromSessionMap(session);
@@ -147,6 +156,7 @@ class AuthChangeNotifier extends ChangeNotifier {
         userId: usuario.id,
         rol: usuario.rol.value,
       );
+      await _connectDriveAutomatically();
       if (previousUser != _usuario) {
         notifyListeners();
       }
@@ -165,24 +175,13 @@ class AuthChangeNotifier extends ChangeNotifier {
     final hadUser = _usuario != null;
     _usuario = null;
     sl<TenantContext>().clear();
-    await SessionService.logout();
+    if (sl.isRegistered<DriveMenuConnectionService>()) {
+      await sl<DriveMenuConnectionService>().signOut();
+    }
+    await FirebaseAuthService().signOut();
     if (hadUser) {
       notifyListeners();
     }
-  }
-
-  Map<String, dynamic> _toSessionMap(Usuario usuario) {
-    return {
-      'id': usuario.id,
-      'restaurantId': usuario.restaurantId,
-      'nombre': usuario.nombre,
-      'email': usuario.email,
-      // PIN no se persiste en sesión por seguridad
-      'rol': usuario.rol.value,
-      'activo': usuario.activo,
-      'createdAt': usuario.createdAt.toIso8601String(),
-      'updatedAt': usuario.updatedAt.toIso8601String(),
-    };
   }
 
   Usuario _fromSessionMap(Map<String, dynamic> session) {

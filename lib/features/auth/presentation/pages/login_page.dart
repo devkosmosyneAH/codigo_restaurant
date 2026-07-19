@@ -1,12 +1,12 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/theme/app_colors.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:restaurant_app/widgets/auth_email_password_form.dart';
 
-/// Pantalla de login mediante PIN de 4 dígitos.
+/// Pantalla de login con Firebase Authentication.
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -15,17 +15,11 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final List<String> _digits = [];
   final TextEditingController _activationCodeCtrl = TextEditingController();
+  final TextEditingController _emailCtrl = TextEditingController();
+  final TextEditingController _passwordCtrl = TextEditingController();
   bool _isLoading = false;
   String? _error;
-
-  static const List<({String label, String pin, IconData icon})> _demoPins = [
-    (label: 'Admin', pin: '1111', icon: Icons.admin_panel_settings_rounded),
-    (label: 'Caja', pin: '2222', icon: Icons.point_of_sale_rounded),
-    (label: 'Mesero', pin: '3333', icon: Icons.room_service_rounded),
-    (label: 'Cocina', pin: '4444', icon: Icons.soup_kitchen_rounded),
-  ];
 
   static final Uri _supportUri = Uri.parse(
     'https://devkosmosyneah.github.io/devkosmosyne-website/',
@@ -47,26 +41,9 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void dispose() {
     _activationCodeCtrl.dispose();
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
     super.dispose();
-  }
-
-  void _addDigit(String digit) {
-    if (_digits.length >= 4 || _isLoading || !_activation.canAccessApp) return;
-    setState(() {
-      _digits.add(digit);
-      _error = null;
-    });
-    if (_digits.length == 4) {
-      _submit();
-    }
-  }
-
-  void _removeDigit() {
-    if (_digits.isEmpty || _isLoading) return;
-    setState(() {
-      _digits.removeLast();
-      _error = null;
-    });
   }
 
   Future<void> _submit() async {
@@ -76,13 +53,16 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     setState(() => _isLoading = true);
-    final pin = _digits.join();
-    final error = await sl<AuthChangeNotifier>().loginWithPin(pin);
+    final email = _emailCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    final error = await sl<AuthChangeNotifier>().loginWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
     if (!mounted) return;
     if (error != null) {
       setState(() {
         _isLoading = false;
-        _digits.clear();
         _error = error;
       });
       return;
@@ -111,22 +91,8 @@ class _LoginPageState extends State<LoginPage> {
       _error = error;
       if (error == null) {
         _activationCodeCtrl.clear();
-        _digits.clear();
       }
     });
-  }
-
-  Future<void> _loginWithDemoPin(String pin) async {
-    if (_isLoading) return;
-
-    setState(() {
-      _digits
-        ..clear()
-        ..addAll(pin.split(''));
-      _error = null;
-    });
-
-    await _submit();
   }
 
   Future<void> _openSupportLink() async {
@@ -238,64 +204,20 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                             ] else ...[
                               Text(
-                                'Ingresa tu PIN',
+                                'Inicia sesión con Firebase',
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(color: Colors.black87),
                               ),
-                              const SizedBox(height: 20),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: List.generate(4, (i) {
-                                  final filled = i < _digits.length;
-                                  return Container(
-                                    margin: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                    ),
-                                    width: 18,
-                                    height: 18,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: filled
-                                          ? AppColors.primary
-                                          : Colors.transparent,
-                                      border: Border.all(
-                                        color: _error != null
-                                            ? AppColors.error
-                                            : AppColors.primary,
-                                        width: 2,
-                                      ),
-                                    ),
-                                  );
-                                }),
+                              const SizedBox(height: 16),
+                              AuthEmailPasswordForm(
+                                emailController: _emailCtrl,
+                                passwordController: _passwordCtrl,
+                                isLoading: _isLoading,
+                                errorText: _error,
+                                onSubmit: _submit,
                               ),
-                              if (_error != null) ...[
-                                const SizedBox(height: 12),
-                                Text(
-                                  _error!,
-                                  style: const TextStyle(
-                                    color: AppColors.error,
-                                    fontSize: 13,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                              const SizedBox(height: 20),
-                              if (kDebugMode) ...[
-                                _DemoAccessCard(
-                                  onSelectPin: _loginWithDemoPin,
-                                  demoPins: _demoPins,
-                                ),
-                                const SizedBox(height: 12),
-                              ],
+                              const SizedBox(height: 12),
                               const _SecurityNoticeCard(),
-                              const SizedBox(height: 20),
-                              if (_isLoading)
-                                const CircularProgressIndicator()
-                              else
-                                _PinKeyboard(
-                                  onDigit: _addDigit,
-                                  onDelete: _removeDigit,
-                                ),
                             ],
                           ],
                         ),
@@ -384,119 +306,6 @@ class _ActivationCard extends StatelessWidget {
                     )
                   : const Icon(Icons.lock_open_rounded),
               label: const Text('Activar y continuar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PinKeyboard extends StatelessWidget {
-  final void Function(String) onDigit;
-  final VoidCallback onDelete;
-
-  const _PinKeyboard({required this.onDigit, required this.onDelete});
-
-  @override
-  Widget build(BuildContext context) {
-    const digits = [
-      ['1', '2', '3'],
-      ['4', '5', '6'],
-      ['7', '8', '9'],
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 320;
-        final buttonWidth = isCompact ? 68.0 : 80.0;
-        final buttonHeight = isCompact ? 60.0 : 72.0;
-
-        return Column(
-          children: [
-            for (final row in digits)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: row
-                    .map(
-                      (d) => _KeyButton(
-                        label: d,
-                        onTap: () => onDigit(d),
-                        width: buttonWidth,
-                        height: buttonHeight,
-                      ),
-                    )
-                    .toList(),
-              ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(width: buttonWidth, height: buttonHeight),
-                _KeyButton(
-                  label: '0',
-                  onTap: () => onDigit('0'),
-                  width: buttonWidth,
-                  height: buttonHeight,
-                ),
-                SizedBox(
-                  width: buttonWidth,
-                  height: buttonHeight,
-                  child: IconButton(
-                    icon: const Icon(Icons.backspace_outlined),
-                    color: AppColors.secondary,
-                    iconSize: 26,
-                    onPressed: onDelete,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _DemoAccessCard extends StatelessWidget {
-  final void Function(String) onSelectPin;
-  final List<({String label, String pin, IconData icon})> demoPins;
-
-  const _DemoAccessCard({required this.onSelectPin, required this.demoPins});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: AppColors.surfaceVariant,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Acceso rápido solo en desarrollo',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Esta ayuda no se muestra en la versión final instalada.',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final item in demoPins)
-                  ActionChip(
-                    avatar: Icon(item.icon, size: 16, color: AppColors.primary),
-                    label: Text('${item.label} · ${item.pin}'),
-                    onPressed: () => onSelectPin(item.pin),
-                  ),
-              ],
             ),
           ],
         ),
@@ -639,38 +448,6 @@ class _SupportBanner extends StatelessWidget {
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _KeyButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-  final double width;
-  final double height;
-
-  const _KeyButton({
-    required this.label,
-    required this.onTap,
-    this.width = 80,
-    this.height = 72,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: width,
-      height: height,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w500),
           ),
         ),
       ),

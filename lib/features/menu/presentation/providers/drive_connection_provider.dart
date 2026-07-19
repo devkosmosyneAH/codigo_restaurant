@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
+import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 
 /// Estado de la conexión Drive para el panel admin.
@@ -61,6 +62,14 @@ class DriveConnectionNotifier extends StateNotifier<DriveConnectionState> {
   /// automáticamente en [initState] del panel de menú.
   Future<void> checkSilently() async {
     if (state.isChecking) return;
+    final auth = sl<AuthChangeNotifier>();
+    if (!auth.isAuthenticated) {
+      state = const DriveConnectionState(
+        status: DriveConnectionStatus.disconnected,
+        error: 'Inicia sesión para administrar Google Drive.',
+      );
+      return;
+    }
     state = state.copyWith(
       status: DriveConnectionStatus.checking,
       clearError: true,
@@ -77,6 +86,14 @@ class DriveConnectionNotifier extends StateNotifier<DriveConnectionState> {
   /// Devuelve `true` si Drive quedó conectado correctamente.
   Future<bool> connectInteractively() async {
     if (state.isChecking) return false;
+    final auth = sl<AuthChangeNotifier>();
+    if (!auth.isAuthenticated) {
+      state = const DriveConnectionState(
+        status: DriveConnectionStatus.disconnected,
+        error: 'Inicia sesión para administrar Google Drive.',
+      );
+      return false;
+    }
     state = state.copyWith(
       status: DriveConnectionStatus.checking,
       clearError: true,

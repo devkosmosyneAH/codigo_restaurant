@@ -82,18 +82,26 @@ class AppRouter {
   ///
   /// Esta función centraliza la política de acceso para evitar duplicidad
   /// entre router, navegación lateral y otras pantallas.
+  static bool isPublicLocation(String location) {
+    final normalized = location.trim();
+    if (normalized.isEmpty) return false;
+
+    final path = normalized.split('?').first;
+    if (path == menuPublico || path.startsWith('$menuPublico/')) return true;
+    if (path == reservasPublico || path.startsWith('$reservasPublico/')) {
+      return true;
+    }
+    if (path == restaurantePublico || path.startsWith('$restaurantePublico/')) {
+      return true;
+    }
+    if (path == pedidoMesa || path.startsWith('$pedidoMesa/')) return true;
+    return path == cotizacionPublica || path.startsWith('$cotizacionPublica/');
+  }
+
   static bool isRouteAllowedForRole(RolUsuario rol, String location) {
     if (rol.esAdmin) return true;
 
-    if (location == menuPublico || location.startsWith('$menuPublico/')) {
-      return true;
-    }
-    if (location == reservasPublico ||
-        location.startsWith('$reservasPublico/')) {
-      return true;
-    }
-    if (location == restaurantePublico ||
-        location.startsWith('$restaurantePublico/')) {
+    if (isPublicLocation(location)) {
       return true;
     }
 
@@ -138,18 +146,7 @@ class AppRouter {
 
       // Las rutas públicas son accesibles siempre, sin importar activación
       // ni autenticación (clientes externos que escanean QR, por ejemplo).
-      final isPublicRoute =
-          loc == menuPublico ||
-          loc.startsWith('$menuPublico/') ||
-          loc == reservasPublico ||
-          loc.startsWith('$reservasPublico/') ||
-          loc == restaurantePublico ||
-          loc.startsWith('$restaurantePublico/') ||
-          loc == pedidoMesa ||
-          loc.startsWith('$pedidoMesa/') ||
-          loc.startsWith('$cotizacionPublica/');
-
-      if (isPublicRoute) return null;
+      if (isPublicLocation(loc)) return null;
 
       // A partir de aquí la ruta requiere la app activada.
       if (!activation.canAccessApp && !isLoginRoute) return login;

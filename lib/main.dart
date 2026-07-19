@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/app_startup/app_startup.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
+import 'package:restaurant_app/core/firebase/firebase_initializer.dart';
 import 'package:restaurant_app/core/theme/app_theme.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
@@ -33,13 +34,16 @@ Future<void> main() async {
   // 🔧 INICIALIZACIÓN ESPECÍFICA POR PLATAFORMA
   await initializePlatformSpecific();
 
+  // 🔐 INICIALIZAR FIREBASE AUTH Y RTDB
+  await FirebaseAppInitializer.initialize();
+
   // �🗄️ INICIALIZAR BASE DE DATOS DE FORMA SEGURA
   await initDependencies();
 
   // Cargar activación local (demo/licencia) antes de restaurar la sesión.
   await sl<ActivationChangeNotifier>().loadStatus();
 
-  // Restaurar sesión local si existe para entrar directo al rol anterior.
+  // Restaurar sesión auth de Firebase si existe para entrar directo al rol anterior.
   // Se retrasa hasta el primer frame para que GoRouter ya esté montado y
   // evitar redirecciones prematuras durante la inicialización.
   WidgetsBinding.instance.addPostFrameCallback((_) {

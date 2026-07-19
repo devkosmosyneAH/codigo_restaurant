@@ -6,6 +6,82 @@ import 'package:http/http.dart' as http;
 import 'package:restaurant_app/core/utils/local_image_provider.dart';
 import 'package:restaurant_app/core/utils/web_indexed_image_cache.dart';
 
+List<String> buildDriveImageCandidates(String? value) {
+  final normalized = value?.trim() ?? '';
+  if (normalized.isEmpty) return const [];
+
+  final candidates = <String>{};
+
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    final fixedUrl = _fixGoogleDriveUrl(normalized);
+    candidates.add(fixedUrl);
+
+    final uri = Uri.tryParse(fixedUrl);
+    if (uri != null && uri.host.toLowerCase().contains('drive.google.com')) {
+      final fileId = _extractDriveFileIdFromUri(uri);
+      if (fileId != null) {
+        candidates.add('https://drive.google.com/uc?export=view&id=$fileId');
+        candidates.add(
+          'https://drive.google.com/thumbnail?id=$fileId&sz=w1000',
+        );
+      }
+    }
+    return candidates.toList(growable: false);
+  }
+
+  final fileId = _extractDriveFileId(normalized);
+  if (fileId == null) return const [];
+
+  candidates.add('https://drive.google.com/uc?export=view&id=$fileId');
+  candidates.add('https://drive.google.com/thumbnail?id=$fileId&sz=w1000');
+  return candidates.toList(growable: false);
+}
+
+String _fixGoogleDriveUrl(String url) {
+  if (url.isEmpty) return url;
+
+  if (url.contains('lh3.googleusercontent.com/d/')) {
+    return url;
+  }
+
+  final regExp = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
+  final match = regExp.firstMatch(url);
+
+  if (match != null && match.groupCount > 0) {
+    final fileId = match.group(1)!;
+    return 'https://lh3.googleusercontent.com/d/$fileId';
+  }
+
+  return url;
+}
+
+String? _extractDriveFileId(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+
+  if (RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(trimmed)) {
+    return trimmed;
+  }
+
+  final uri = Uri.tryParse(trimmed);
+  if (uri != null) {
+    return _extractDriveFileIdFromUri(uri);
+  }
+
+  final regex = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
+  final match = regex.firstMatch(trimmed);
+  return match?.group(1);
+}
+
+String? _extractDriveFileIdFromUri(Uri uri) {
+  final queryId = uri.queryParameters['id'];
+  if (queryId != null && queryId.isNotEmpty) return queryId;
+
+  final match = RegExp(r'/d/([a-zA-Z0-9_-]+)').firstMatch(uri.path);
+  if (match != null) return match.group(1);
+  return null;
+}
+
 class MenuImageLoader extends StatefulWidget {
   final String? primaryImageValue;
   final String? fallbackImageValue;
@@ -41,26 +117,6 @@ class MenuImageLoader extends StatefulWidget {
 class _MenuImageLoaderState extends State<MenuImageLoader> {
   List<_ImageCandidate> _candidates = const [];
   int _activeIndex = 0;
-
-  /// Convierte URLs de Google Drive a un formato servido por usercontent
-  /// para evitar bloqueos CORS en Flutter Web.
-  String _fixGoogleDriveUrl(String url) {
-    if (url.isEmpty) return url;
-
-    if (url.contains('lh3.googleusercontent.com/d/')) {
-      return url;
-    }
-
-    final regExp = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
-    final match = regExp.firstMatch(url);
-
-    if (match != null && match.groupCount > 0) {
-      final fileId = match.group(1)!;
-      return 'https://lh3.googleusercontent.com/d/$fileId';
-    }
-
-    return url;
-  }
 
   @override
   void initState() {
@@ -140,21 +196,48 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
     }
 
     if (raw.startsWith('http://') || raw.startsWith('https://')) {
-      final fixedUrl = _fixGoogleDriveUrl(raw);
-      if (kIsWeb) {
-        candidates.add(
-          _ImageCandidate(
-            key: '$prefix:web-net:$fixedUrl',
-            networkUrl: fixedUrl,
-          ),
-        );
-      } else {
-        candidates.add(
-          _ImageCandidate(
-            key: '$prefix:net:$fixedUrl',
-            provider: _resized(NetworkImage(fixedUrl)),
-          ),
-        );
+      final candidateUrls = buildDriveImageCandidates(raw);
+      final urls = candidateUrls.isNotEmpty ? candidateUrls : [raw];
+      for (final candidateUrl in urls) {
+        final fixedUrl = _fixGoogleDriveUrl(candidateUrl);
+        if (kIsWeb) {
+          candidates.add(
+            _ImageCandidate(
+              key: '$prefix:web-net:$fixedUrl',
+              networkUrl: fixedUrl,
+            ),
+          );
+        } else {
+          candidates.add(
+            _ImageCandidate(
+              key: '$prefix:net:$fixedUrl',
+              provider: _resized(NetworkImage(fixedUrl)),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
+    if (raw.startsWith('drive:')) {
+      final fileId = raw.substring('drive:'.length).trim();
+      final driveCandidates = buildDriveImageCandidates(fileId);
+      for (final candidateUrl in driveCandidates) {
+        if (kIsWeb) {
+          candidates.add(
+            _ImageCandidate(
+              key: '$prefix:web-net:$candidateUrl',
+              networkUrl: candidateUrl,
+            ),
+          );
+        } else {
+          candidates.add(
+            _ImageCandidate(
+              key: '$prefix:net:$candidateUrl',
+              provider: _resized(NetworkImage(candidateUrl)),
+            ),
+          );
+        }
       }
       return;
     }

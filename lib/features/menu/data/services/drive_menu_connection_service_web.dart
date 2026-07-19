@@ -120,6 +120,9 @@ class DriveMenuConnectionService {
              clientId: AppEnvironment.googleClientId.isEmpty
                  ? null
                  : AppEnvironment.googleClientId,
+             serverClientId: AppEnvironment.googleClientId.isEmpty
+                 ? null
+                 : AppEnvironment.googleClientId,
            ),
        _uuid = uuid ?? const Uuid();
 

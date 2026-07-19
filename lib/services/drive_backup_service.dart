@@ -36,8 +36,11 @@ class DriveBackupService {
   static const _folderName = 'La Peña Backups';
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: [drive.DriveApi.driveFileScope],
+    scopes: [drive.DriveApi.driveScope],
     clientId: AppEnvironment.googleClientId.isEmpty
+        ? null
+        : AppEnvironment.googleClientId,
+    serverClientId: AppEnvironment.googleClientId.isEmpty
         ? null
         : AppEnvironment.googleClientId,
   );
