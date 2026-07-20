@@ -26,38 +26,59 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 🌍 INICIALIZAR LOCALIZACIÓN PARA FECHAS
-  await initializeDateFormatting('es', null);
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.dumpErrorToConsole(details);
+    debugPrint(details.exceptionAsString());
+    debugPrintStack(stackTrace: details.stack);
+  };
 
-  // 🖥️ CONFIGURAR TAMAÑO DE VENTANA PARA DESKTOP
-  await initializeDesktopWindow();
+  try {
+    debugPrint('STEP 1 - initializeDateFormatting');
+    await initializeDateFormatting('es', null);
 
-  // 🔧 INICIALIZACIÓN ESPECÍFICA POR PLATAFORMA
-  await initializePlatformSpecific();
+    debugPrint('STEP 2 - initializeDesktopWindow');
+    await initializeDesktopWindow();
 
-  // 🔐 INICIALIZAR FIREBASE AUTH Y RTDB
-  await FirebaseAppInitializer.initialize();
+    debugPrint('STEP 3 - initializePlatformSpecific');
+    await initializePlatformSpecific();
 
-  // �🗄️ INICIALIZAR BASE DE DATOS DE FORMA SEGURA
-  await initDependencies();
+    debugPrint('STEP 4 - FirebaseAppInitializer.initialize');
+    await FirebaseAppInitializer.initialize();
 
-  // Cargar activación local (demo/licencia) antes de restaurar la sesión.
-  await sl<ActivationChangeNotifier>().loadStatus();
+    debugPrint('STEP 5 - initDependencies');
+    await initDependencies();
 
-  // Restaurar sesión de Google Sign-In una sola vez al iniciar la app.
-  await sl<GoogleAuthService>().restoreSession();
+    debugPrint('STEP 6 - ActivationChangeNotifier.loadStatus');
+    await sl<ActivationChangeNotifier>().loadStatus();
 
-  // Restaurar sesión auth de Firebase si existe para entrar directo al rol anterior.
-  // Se retrasa hasta el primer frame para que GoRouter ya esté montado y
-  // evitar redirecciones prematuras durante la inicialización.
-  WidgetsBinding.instance.addPostFrameCallback((_) {
-    sl<AuthChangeNotifier>().restoreSession();
-  });
+    debugPrint('STEP 7 - GoogleAuthService.restoreSession');
+    await sl<GoogleAuthService>().restoreSession();
 
-  // Iniciar sincronizacion hibrida automatica (push + pull realtime).
-  await sl<HybridSyncOrchestrator>().start();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        debugPrint('STEP 8 - AuthChangeNotifier.restoreSession (post frame)');
+        await sl<AuthChangeNotifier>().restoreSession();
+      } catch (e, st) {
+        debugPrint('ERROR EN STEP 8 - AuthChangeNotifier.restoreSession');
+        debugPrint(e.toString());
+        debugPrintStack(stackTrace: st);
+        rethrow;
+      }
+    });
 
-  runApp(const ProviderScope(child: RestaurantApp()));
+    debugPrint('STEP 9 - HybridSyncOrchestrator.start');
+    await sl<HybridSyncOrchestrator>().start();
+
+    debugPrint('STEP 10 - runApp');
+    runApp(const ProviderScope(child: RestaurantApp()));
+  } catch (e, s) {
+    debugPrint('==============================');
+    debugPrint('ERROR EN MAIN');
+    debugPrint(e.toString());
+    debugPrintStack(stackTrace: s);
+    debugPrint('==============================');
+    rethrow;
+  }
 }
 
 /// Widget raíz de la aplicación.
