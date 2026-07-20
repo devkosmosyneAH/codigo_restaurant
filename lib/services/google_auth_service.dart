@@ -17,7 +17,8 @@ enum GoogleAuthState { notAuthenticated, authenticating, authenticated, error }
 /// - Gestión de scopes y configuración
 /// - Válido para Android, iOS, Web, Windows, macOS, Linux
 ///
-/// TODO LO DEMÁS (Firebase, Drive, etc) DEPENDE DE ESTE SERVICIO.
+/// T
+/// OD}O LO DEMÁS (Firebase, Drive, etc) DEPENDE DE ESTE SERVICIO.
 class GoogleAuthService {
   GoogleAuthService._({GoogleSignIn? googleSignIn})
     : _googleSignIn = googleSignIn ?? _createDefaultGoogleSignIn();
@@ -89,6 +90,18 @@ class GoogleAuthService {
       return _loginFuture;
     }
 
+    if (_restoreFuture != null) {
+      debugPrint(
+        'google_auth.signIn: Esperando restore en progreso antes de iniciar login',
+      );
+      final restored = await _restoreFuture;
+      if (restored != null) {
+        _currentUser = restored;
+        _state = GoogleAuthState.authenticated;
+        return restored;
+      }
+    }
+
     _state = GoogleAuthState.authenticating;
     _loginFuture = _performSignIn();
 
@@ -145,6 +158,18 @@ class GoogleAuthService {
     if (_restoreFuture != null) {
       debugPrint('google_auth.signInSilently: Reutilizando Future en progreso');
       return _restoreFuture;
+    }
+
+    if (_loginFuture != null) {
+      debugPrint(
+        'google_auth.signInSilently: Esperando signIn en progreso antes de restaurar',
+      );
+      final logged = await _loginFuture;
+      if (logged != null) {
+        _currentUser = logged;
+        _state = GoogleAuthState.authenticated;
+        return logged;
+      }
     }
 
     _restoreFuture = _performSignInSilently();

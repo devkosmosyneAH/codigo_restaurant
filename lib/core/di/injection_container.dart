@@ -132,9 +132,15 @@ Future<void> initDependencies() async {
 
   // ── Autenticación centralizada ───────────────────────────────────
   // IMPORTANTE: El orden importa aquí. GoogleAuthService es la base.
-  sl.registerSingleton<GoogleAuthService>(GoogleAuthService.instance);
-  sl.registerSingleton<FirebaseAuthService>(FirebaseAuthService.instance);
-  sl.registerSingleton<DriveBackupService>(DriveBackupService.instance);
+  // Registramos los servicios de autenticación de forma perezosa (lazy)
+  // para evitar la inicialización temprana de GoogleSignIn en la web.
+  sl.registerLazySingleton<GoogleAuthService>(() => GoogleAuthService.instance);
+  sl.registerLazySingleton<FirebaseAuthService>(
+    () => FirebaseAuthService.instance,
+  );
+  sl.registerLazySingleton<DriveBackupService>(
+    () => DriveBackupService.instance,
+  );
 
   // ── Features ─────────────────────────────────────────────────────
   _initMesas();
@@ -229,12 +235,11 @@ void _initMenu() {
     () => DriveConnectionLocalDatasource(dbHelper: sl()),
   );
   sl.registerLazySingleton<DriveMenuConnectionService>(
-    () =>
-        DriveMenuConnectionService(
-          datasource: sl(),
-          diagnosticsService: sl(),
-          googleAuthService: sl(),
-        ),
+    () => DriveMenuConnectionService(
+      datasource: sl(),
+      diagnosticsService: sl(),
+      googleAuthService: sl(),
+    ),
   );
   sl.registerLazySingleton<MenuRealtimeDatabaseService>(
     () => MenuRealtimeDatabaseService(diagnosticsService: sl()),
