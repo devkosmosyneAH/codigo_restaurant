@@ -5,7 +5,6 @@ class AuthService {
   /// Login con verificación en SQLite y guardado de sesión
   Future<Map<String, dynamic>?> login(String email, String password) async {
     try {
-
       // Buscar usuario en la base de datos SQLite
       final List<Map<String, dynamic>> users = await DatabaseService.rawQuery(
         'SELECT * FROM users WHERE email = ? LIMIT 1',
@@ -17,19 +16,17 @@ class AuthService {
 
         // En un sistema real, aquí verificarías el password hasheado
         // Por ahora, simulamos que el login es exitoso si el usuario existe
-        
+
         // Guardar TODOS los datos del usuario en la sesión, no solo los básicos
         final userData = Map<String, dynamic>.from(user);
-        
+
         // Asegurar que el uid esté presente
         userData['uid'] = user['uid'] ?? user['_key'];
-        
 
         // Guardar sesión del usuario
         final sessionSaved = await SessionService.saveUserSession(userData);
         if (sessionSaved) {
-        } else {
-        }
+        } else {}
 
         return userData;
       } else {
@@ -50,7 +47,6 @@ class AuthService {
     String role,
   ) async {
     try {
-
       // Verificar si el usuario ya existe
       final existingUsers = await DatabaseService.rawQuery(
         'SELECT * FROM users WHERE email = ? LIMIT 1',
@@ -91,7 +87,6 @@ class AuthService {
   /// Obtener usuario por UID
   Future<Map<String, dynamic>?> getUserByUid(String uid) async {
     try {
-
       final List<Map<String, dynamic>> users = await DatabaseService.rawQuery(
         'SELECT * FROM users WHERE uid = ? LIMIT 1',
         [uid],
@@ -110,7 +105,6 @@ class AuthService {
   /// Obtener usuario por email
   Future<Map<String, dynamic>?> getUserByEmail(String email) async {
     try {
-
       final List<Map<String, dynamic>> users = await DatabaseService.rawQuery(
         'SELECT * FROM users WHERE email = ? LIMIT 1',
         [email],
@@ -129,7 +123,6 @@ class AuthService {
   /// Actualizar datos de usuario
   Future<bool> updateUser(String uid, Map<String, dynamic> updates) async {
     try {
-
       final setClause = updates.keys.map((key) => '$key = ?').join(', ');
       final values = [...updates.values, uid];
 
@@ -157,7 +150,6 @@ class AuthService {
   /// Obtener todos los usuarios
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     try {
-
       final List<Map<String, dynamic>> users = await DatabaseService.rawQuery(
         'SELECT * FROM users ORDER BY name ASC',
       );
@@ -171,7 +163,6 @@ class AuthService {
   /// Crear usuario completo
   Future<bool> createUser(Map<String, dynamic> userData) async {
     try {
-
       // Extraer campos principales
       final uid =
           userData['uid'] ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
@@ -235,7 +226,6 @@ class AuthService {
     Map<String, dynamic> userData,
   ) async {
     try {
-
       // Construir query dinámicamente
       final List<String> setFields = [];
       final List<dynamic> values = [];
@@ -271,7 +261,6 @@ class AuthService {
   /// Eliminar usuario
   Future<bool> deleteUser(String uid) async {
     try {
-
       final result = await DatabaseService.rawDelete(
         'DELETE FROM users WHERE uid = ?',
         [uid],
@@ -290,12 +279,10 @@ class AuthService {
   /// Cerrar sesión del usuario actual
   Future<bool> logout() async {
     try {
-
       final success = await SessionService.logout();
 
       if (success) {
-      } else {
-      }
+      } else {}
 
       return success;
     } catch (e) {

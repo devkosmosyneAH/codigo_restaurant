@@ -66,7 +66,7 @@ class AuthChangeNotifier extends ChangeNotifier {
       return sl<ActivationChangeNotifier>().status.message;
     }
 
-    final authService = FirebaseAuthService();
+    final authService = sl<FirebaseAuthService>();
     final error = await authService.signInWithEmailAndPassword(
       email: email,
       password: password,
@@ -134,7 +134,7 @@ class AuthChangeNotifier extends ChangeNotifier {
 
     final session = await SessionService.getCurrentUserSession();
     if (session == null) {
-      final firebaseSession = await FirebaseAuthService()
+      final firebaseSession = await sl<FirebaseAuthService>()
           .restoreSessionFromFirebase();
       if (firebaseSession == null) return;
       return;
@@ -178,7 +178,7 @@ class AuthChangeNotifier extends ChangeNotifier {
     if (sl.isRegistered<DriveMenuConnectionService>()) {
       await sl<DriveMenuConnectionService>().signOut();
     }
-    await FirebaseAuthService().signOut();
+    await sl<FirebaseAuthService>().signOut();
     if (hadUser) {
       notifyListeners();
     }

@@ -7,6 +7,9 @@ import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:restaurant_app/services/facturacion/sri_service.dart';
+import 'package:restaurant_app/services/google_auth_service.dart';
+import 'package:restaurant_app/services/firebase_auth_service.dart';
+import 'package:restaurant_app/services/drive_backup_service.dart';
 
 // ── Mesas ────────────────────────────────────────────────────────────
 import 'package:restaurant_app/features/mesas/data/datasources/mesa_local_datasource.dart';
@@ -127,6 +130,12 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<AuthChangeNotifier>(() => AuthChangeNotifier());
   sl.registerLazySingleton<SriService>(() => SriServiceImpl());
 
+  // ── Autenticación centralizada ───────────────────────────────────
+  // IMPORTANTE: El orden importa aquí. GoogleAuthService es la base.
+  sl.registerSingleton<GoogleAuthService>(GoogleAuthService.instance);
+  sl.registerSingleton<FirebaseAuthService>(FirebaseAuthService.instance);
+  sl.registerSingleton<DriveBackupService>(DriveBackupService.instance);
+
   // ── Features ─────────────────────────────────────────────────────
   _initMesas();
   _initPedidos();
@@ -221,7 +230,11 @@ void _initMenu() {
   );
   sl.registerLazySingleton<DriveMenuConnectionService>(
     () =>
-        DriveMenuConnectionService(datasource: sl(), diagnosticsService: sl()),
+        DriveMenuConnectionService(
+          datasource: sl(),
+          diagnosticsService: sl(),
+          googleAuthService: sl(),
+        ),
   );
   sl.registerLazySingleton<MenuRealtimeDatabaseService>(
     () => MenuRealtimeDatabaseService(diagnosticsService: sl()),

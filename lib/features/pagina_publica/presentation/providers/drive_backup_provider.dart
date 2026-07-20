@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/core/database/database_helper.dart';
+import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/services/database_service.dart';
 import 'package:restaurant_app/services/drive_backup_service.dart';
 
@@ -46,7 +47,7 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
   DriveBackupNotifier({
     DriveBackupService? service,
     bool autoCheckSignIn = true,
-  }) : _service = service ?? DriveBackupService.instance,
+  }) : _service = service ?? sl<DriveBackupService>(),
        super(const DriveBackupState()) {
     if (autoCheckSignIn) {
       _checkSignIn();

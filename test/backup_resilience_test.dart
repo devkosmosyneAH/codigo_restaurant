@@ -149,6 +149,9 @@ class _FakeDriveFailingService implements DriveBackupService {
   GoogleSignInAccount? get currentUser => null;
 
   @override
+  String? get currentEmail => null;
+
+  @override
   bool get isSignedIn => false;
 
   @override
@@ -178,4 +181,5 @@ class _FakeDriveFailingService implements DriveBackupService {
 
   @override
   Future<void> signOut() async {}
+
 }

@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:restaurant_app/core/constants/app_constants.dart';
-import 'package:restaurant_app/core/config/app_environment.dart';
+import 'package:restaurant_app/services/google_auth_service.dart';
 
 /// Resultado de una operación de backup o restauración.
 class DriveResult {
@@ -23,58 +23,81 @@ class DriveResult {
   });
 }
 
-/// Servicio para subir/descargar la base de datos SQLite desde Google Drive.
+/// Servicio ÚNICO para respaldar/restaurar la base de datos desde Google Drive.
+///
+/// IMPORTANTE: NO crea su propia instancia de GoogleSignIn.
+/// Reutiliza GoogleAuthService.instance para toda la autenticación.
 ///
 /// Usa OAuth 2.0 con el scope de appdata (aislado por app, el usuario no
-/// ve estos archivos en su Drive normal).  No requiere client_secret en el
-/// dispositivo: google_sign_in usa el OAuth nativo de Android/iOS.
+/// ve estos archivos en su Drive normal).
 class DriveBackupService {
-  DriveBackupService._();
-  static final DriveBackupService instance = DriveBackupService._();
+  DriveBackupService._({GoogleAuthService? googleAuthService})
+    : _googleAuthService = googleAuthService ?? GoogleAuthService.instance;
+
+  static DriveBackupService? _instance;
+
+  /// Obtiene la instancia única de DriveBackupService.
+  static DriveBackupService get instance {
+    _instance ??= DriveBackupService._();
+    return _instance!;
+  }
+
+  /// Para pruebas: permite inyectar una instancia custom.
+  @visibleForTesting
+  static void setInstance(DriveBackupService instance) {
+    _instance = instance;
+  }
+
+  /// Para pruebas: resetea la instancia.
+  @visibleForTesting
+  static void reset() {
+    _instance = null;
+  }
 
   static const _backupFileName = 'lapena_backup.db';
   static const _folderName = 'La Peña Backups';
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: [drive.DriveApi.driveScope],
-    clientId: AppEnvironment.googleClientId.isEmpty
-        ? null
-        : AppEnvironment.googleClientId,
-    serverClientId: AppEnvironment.googleClientId.isEmpty
-        ? null
-        : AppEnvironment.googleClientId,
-  );
+  final GoogleAuthService _googleAuthService;
 
-  GoogleSignInAccount? _currentUser;
-  GoogleSignInAccount? get currentUser => _currentUser;
-  bool get isSignedIn => _currentUser != null;
+  // ── Getters ──────────────────────────────────────────────────────────────
+
+  /// Usuario autenticado (del servicio central).
+  GoogleSignInAccount? get currentUser => _googleAuthService.currentUser;
+
+  /// Email del usuario autenticado.
+  String? get currentEmail => _googleAuthService.currentEmail;
+
+  /// ¿Hay un usuario autenticado?
+  bool get isSignedIn => _googleAuthService.isSignedIn;
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
   /// Inicia sesión interactiva con Google.
+  ///
+  /// Delega a GoogleAuthService (no crea nueva instancia).
   Future<GoogleSignInAccount?> signIn() async {
-    try {
-      _currentUser = await _googleSignIn.signIn();
-      return _currentUser;
-    } catch (e) {
-      return null;
-    }
+    final account = await _googleAuthService.signIn();
+    debugPrint('drive_backup: signIn resultado=${account?.email ?? 'null'}');
+    return account;
   }
 
   /// Intenta iniciar sesión silenciosamente (sesión previa).
+  ///
+  /// Delega a GoogleAuthService.
   Future<GoogleSignInAccount?> signInSilently() async {
-    try {
-      _currentUser = await _googleSignIn.signInSilently();
-      return _currentUser;
-    } catch (_) {
-      return null;
-    }
+    final account = await _googleAuthService.restoreSession();
+    debugPrint(
+      'drive_backup: signInSilently resultado=${account?.email ?? 'null'}',
+    );
+    return account;
   }
 
   /// Cierra sesión.
+  ///
+  /// Delega a GoogleAuthService.
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    _currentUser = null;
+    await _googleAuthService.signOut();
+    debugPrint('drive_backup: signOut completado');
   }
 
   // ── Internal ─────────────────────────────────────────────────────────────
@@ -82,93 +105,34 @@ class DriveBackupService {
   Future<drive.DriveApi> _getDriveApi() async {
     const tokenError = 'Drive accessToken inválido. Reautenticación requerida.';
 
-    Future<void> resetSession() async {
-      try {
-        await signOut();
-      } catch (_) {}
-      try {
-        await _googleSignIn.disconnect();
-      } catch (_) {}
-      _currentUser = null;
+    // Obtener usuario autenticado desde el servicio central
+    var account = _googleAuthService.currentUser;
+    if (account == null) {
+      // Intentar restaurar sesión única silenciosa.
+      account = await _googleAuthService.restoreSession();
+      if (account != null) {
+        debugPrint(
+          'drive_backup._getDriveApi: sesión activa por restoreSession '
+          'cuenta=${account.email}',
+        );
+      }
     }
 
-    Future<GoogleSignInAccount?> acquireAccount({
-      required bool interactive,
-    }) async {
-      var account = _currentUser;
-      if (account == null) {
-        account = await signInSilently();
-        if (account != null) {
-          debugPrint(
-            'drive.auth [backup]: sesión activa por signInSilently '
-            'cuenta=${account.email}',
-          );
-        }
-      }
-
-      if (account == null && interactive) {
-        debugPrint(
-          'drive.auth [backup]: sin sesión silenciosa, '
-          'forzando signIn interactivo.',
-        );
-        account = await signIn();
-        if (account != null) {
-          debugPrint(
-            'drive.auth [backup]: sesión activa por signIn '
-            'cuenta=${account.email}',
-          );
-        }
-      }
-
-      return account;
-    }
-
-    Future<String> resolveAccessToken(GoogleSignInAccount account) async {
-      final auth = await account.authentication;
-      final token = auth.accessToken;
-
-      if (token == null || token.isEmpty) {
-        debugPrint(
-          'drive.auth [backup]: accessToken null para ${account.email}',
-        );
-        await resetSession();
-
-        final relogin = await acquireAccount(interactive: true);
-        if (relogin == null) {
-          throw StateError(tokenError);
-        }
-
-        _currentUser = relogin;
-        final retryAuth = await relogin.authentication;
-        final retryToken = retryAuth.accessToken;
-        if (retryToken == null || retryToken.isEmpty) {
-          debugPrint(
-            'drive.auth [backup]: accessToken null tras reautenticación '
-            'cuenta=${relogin.email}',
-          );
-          await resetSession();
-          throw StateError(tokenError);
-        }
-        final retryPreview = retryToken.substring(
-          0,
-          retryToken.length.clamp(0, 8),
-        );
-        debugPrint(
-          'drive.auth [backup]: accessToken reautenticado '
-          '($retryPreview...) cuenta=${relogin.email}',
-        );
-        return retryToken;
-      }
-
-      final tokenPreview = token.substring(0, token.length.clamp(0, 8));
+    if (account == null) {
+      // Solicitar login interactivo
       debugPrint(
-        'drive.auth [backup]: accessToken obtenido '
-        '($tokenPreview...) cuenta=${account.email}',
+        'drive_backup._getDriveApi: sin sesión silenciosa, '
+        'forzando signIn interactivo.',
       );
-      return token;
+      account = await _googleAuthService.signIn();
+      if (account != null) {
+        debugPrint(
+          'drive_backup._getDriveApi: sesión activa por signIn '
+          'cuenta=${account.email}',
+        );
+      }
     }
 
-    final account = await acquireAccount(interactive: true);
     if (account == null) {
       throw StateError(
         'No hay sesión de Google activa. '
@@ -176,31 +140,33 @@ class DriveBackupService {
       );
     }
 
-    _currentUser = account;
+    // Obtener token
+    final token = await _googleAuthService.getAccessToken();
+    if (token == null || token.isEmpty) {
+      debugPrint(
+        'drive_backup._getDriveApi: accessToken null para ${account.email}',
+      );
+      throw StateError(tokenError);
+    }
+
+    final tokenPreview = token.substring(0, token.length.clamp(0, 8));
     debugPrint(
-      'drive.auth [backup]: sesión Google activa cuenta=${account.email}',
+      'drive_backup._getDriveApi: accessToken obtenido '
+      '($tokenPreview...) cuenta=${account.email}',
     );
 
-    var token = await resolveAccessToken(account);
-    var api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
+    // Crear API client
+    final api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
 
+    // Validar acceso
     try {
       await api.files.list(pageSize: 1);
+      debugPrint('drive_backup._getDriveApi: Drive API validado');
     } catch (e, st) {
       debugPrint(
-        'drive.auth [backup]: validación runtime Drive falló: $e\n$st',
+        'drive_backup._getDriveApi: validación runtime Drive falló: $e\n$st',
       );
-      await resetSession();
-
-      final relogin = await acquireAccount(interactive: true);
-      if (relogin == null) {
-        throw StateError('Autenticado pero sin acceso a Drive API.');
-      }
-
-      _currentUser = relogin;
-      token = await resolveAccessToken(relogin);
-      api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
-      await api.files.list(pageSize: 1);
+      throw StateError('Autenticado pero sin acceso a Drive API.');
     }
 
     return api;

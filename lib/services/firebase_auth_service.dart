@@ -5,12 +5,33 @@ import 'package:restaurant_app/core/constants/app_constants.dart';
 import 'package:restaurant_app/services/Auth/auth_service.dart';
 import 'package:restaurant_app/services/session_service.dart';
 
+/// Servicio ÚNICO para autenticación con Firebase.
 class FirebaseAuthService {
-  FirebaseAuthService({
+  FirebaseAuthService._({
     FirebaseAuth? firebaseAuth,
     DatabaseReference? databaseReference,
   }) : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance,
        _database = databaseReference ?? FirebaseDatabase.instance.ref();
+
+  static FirebaseAuthService? _instance;
+
+  /// Obtiene la instancia única de FirebaseAuthService.
+  static FirebaseAuthService get instance {
+    _instance ??= FirebaseAuthService._();
+    return _instance!;
+  }
+
+  /// Para pruebas: permite inyectar una instancia custom.
+  @visibleForTesting
+  static void setInstance(FirebaseAuthService instance) {
+    _instance = instance;
+  }
+
+  /// Para pruebas: resetea la instancia.
+  @visibleForTesting
+  static void reset() {
+    _instance = null;
+  }
 
   final FirebaseAuth _firebaseAuth;
   final DatabaseReference _database;

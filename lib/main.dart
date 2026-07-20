@@ -10,6 +10,7 @@ import 'package:restaurant_app/core/theme/app_theme.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
+import 'package:restaurant_app/services/google_auth_service.dart';
 
 /// Punto de entrada de la aplicación RestaurantApp.
 ///
@@ -42,6 +43,9 @@ Future<void> main() async {
 
   // Cargar activación local (demo/licencia) antes de restaurar la sesión.
   await sl<ActivationChangeNotifier>().loadStatus();
+
+  // Restaurar sesión de Google Sign-In una sola vez al iniciar la app.
+  await sl<GoogleAuthService>().restoreSession();
 
   // Restaurar sesión auth de Firebase si existe para entrar directo al rol anterior.
   // Se retrasa hasta el primer frame para que GoRouter ya esté montado y
