@@ -100,6 +100,11 @@ class DriveBackupService {
     debugPrint('drive_backup: signOut completado');
   }
 
+  /// Expone la verificación de permisos para Drive (delegado al servicio
+  /// central de GoogleAuthService).
+  Future<bool> ensureDriveAuthenticated({bool interactive = false}) =>
+      _googleAuthService.ensureDriveAuthenticated(interactive: interactive);
+
   // ── Internal ─────────────────────────────────────────────────────────────
 
   Future<drive.DriveApi> _getDriveApi() async {
@@ -141,6 +146,20 @@ class DriveBackupService {
     }
 
     // Obtener token
+    // Verificar que la sesión tenga permisos para Drive sin forzar UI.
+    final hasDrive = await _googleAuthService.ensureDriveAuthenticated(
+      interactive: false,
+    );
+    if (!hasDrive) {
+      debugPrint(
+        'drive_backup._getDriveApi: sesión sin token Drive para ${account.email} (consentimiento faltante)',
+      );
+      throw StateError(
+        'Drive no autorizado: la cuenta está autenticada pero NO tiene un access token para Drive. ' 
+        'Debes ejecutar una conexión interactiva una sola vez para otorgar permisos (llama a GoogleAuthService.signIn()).',
+      );
+    }
+
     final token = await _googleAuthService.getAccessToken();
     if (token == null || token.isEmpty) {
       debugPrint(
@@ -204,6 +223,17 @@ class DriveBackupService {
   /// Si ya existe un archivo previo lo reemplaza (actualiza contenido).
   Future<DriveResult> backup() async {
     try {
+      // Intentar asegurar permisos Drive: si no hay token, solicitar
+      // interactivamente al usuario una vez (auto-prompt).
+      final ready = await _ensureDriveReady(interactiveIfNeeded: true);
+      if (!ready) {
+        return const DriveResult(
+          success: false,
+          message:
+              'Permisos para Google Drive no concedidos. Se requiere autorización.',
+        );
+      }
+
       final api = await _getDriveApi();
       final folderId = await _getFolderId(api);
       final dbPath = await _getLocalDbPath();
@@ -266,6 +296,15 @@ class DriveBackupService {
   /// ⚠️ Cierra la BD antes de llamar este método y reinicia la app después.
   Future<DriveResult> restore() async {
     try {
+      final ready = await _ensureDriveReady(interactiveIfNeeded: true);
+      if (!ready) {
+        return const DriveResult(
+          success: false,
+          message:
+              'Permisos para Google Drive no concedidos. Se requiere autorización.',
+        );
+      }
+
       final api = await _getDriveApi();
       final folderId = await _getFolderId(api);
 
@@ -319,6 +358,9 @@ class DriveBackupService {
   /// Retorna la fecha del último backup en Drive, o null si no existe.
   Future<DateTime?> lastBackupDate() async {
     try {
+      final ready = await _ensureDriveReady(interactiveIfNeeded: false);
+      if (!ready) return null;
+
       final api = await _getDriveApi();
       final folderId = await _getFolderId(api);
       final query =
@@ -331,6 +373,21 @@ class DriveBackupService {
       return result.files?.firstOrNull?.modifiedTime;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Intenta asegurar permisos para Drive; si `interactiveIfNeeded` es true
+  /// intentará pedir consentimiento interactivo la primera vez.
+  Future<bool> _ensureDriveReady({bool interactiveIfNeeded = true}) async {
+    try {
+      final has = await ensureDriveAuthenticated(interactive: false);
+      if (has) return true;
+      if (!interactiveIfNeeded) return false;
+      final granted = await ensureDriveAuthenticated(interactive: true);
+      return granted;
+    } catch (e) {
+      debugPrint('drive_backup._ensureDriveReady: $e');
+      return false;
     }
   }
 }

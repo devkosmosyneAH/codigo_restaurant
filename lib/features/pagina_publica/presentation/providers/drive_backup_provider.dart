@@ -8,6 +8,7 @@ import 'package:restaurant_app/services/drive_backup_service.dart';
 
 class DriveBackupState {
   final bool isSignedIn;
+  final bool needsDriveConsent;
   final String? userEmail;
   final bool isLoading;
   final String? lastMessage;
@@ -16,6 +17,7 @@ class DriveBackupState {
 
   const DriveBackupState({
     this.isSignedIn = false,
+    this.needsDriveConsent = false,
     this.userEmail,
     this.isLoading = false,
     this.lastMessage,
@@ -25,6 +27,7 @@ class DriveBackupState {
 
   DriveBackupState copyWith({
     bool? isSignedIn,
+    bool? needsDriveConsent,
     String? userEmail,
     bool? isLoading,
     String? lastMessage,
@@ -33,6 +36,7 @@ class DriveBackupState {
     bool clearMessage = false,
   }) => DriveBackupState(
     isSignedIn: isSignedIn ?? this.isSignedIn,
+    needsDriveConsent: needsDriveConsent ?? this.needsDriveConsent,
     userEmail: userEmail ?? this.userEmail,
     isLoading: isLoading ?? this.isLoading,
     lastMessage: clearMessage ? null : (lastMessage ?? this.lastMessage),
@@ -60,10 +64,15 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
     final account = await _service.signInSilently();
     if (account != null) {
       final lastDate = await _service.lastBackupDate();
+      // Verificar si la cuenta ya tiene token Drive válido (sin UI).
+      final hasDrive = await _service.ensureDriveAuthenticated(
+        interactive: false,
+      );
       state = state.copyWith(
         isSignedIn: true,
         userEmail: account.email,
         lastBackupDate: lastDate,
+        needsDriveConsent: !hasDrive,
       );
     }
   }
@@ -80,11 +89,36 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
         lastBackupDate: lastDate,
         lastMessage: 'Sesión iniciada como ${account.email}',
         lastSuccess: true,
+        needsDriveConsent: false,
       );
     } else {
       state = state.copyWith(
         isLoading: false,
         lastMessage: 'Inicio de sesión cancelado o fallido.',
+        lastSuccess: false,
+      );
+    }
+  }
+
+  /// Pide interactivamente consentimiento para Drive (si hace falta).
+  Future<void> connectDriveInteractively() async {
+    state = state.copyWith(isLoading: true, clearMessage: true);
+    final granted = await _service.ensureDriveAuthenticated(interactive: true);
+    if (granted) {
+      final lastDate = await _service.lastBackupDate();
+      state = state.copyWith(
+        isLoading: false,
+        isSignedIn: true,
+        userEmail: _service.currentEmail,
+        lastBackupDate: lastDate,
+        lastMessage: 'Drive autorizado correctamente.',
+        lastSuccess: true,
+        needsDriveConsent: false,
+      );
+    } else {
+      state = state.copyWith(
+        isLoading: false,
+        lastMessage: 'No se concedieron permisos para Drive.',
         lastSuccess: false,
       );
     }

@@ -402,6 +402,54 @@ class GoogleAuthService {
     }
   }
 
+  /// Asegura que la sesión tenga permisos para acceder a Google Drive.
+  ///
+  /// Si `interactive` es false, solo intentará restaurar la sesión y obtener
+  /// el token sin mostrar UI. Retorna `true` si hay token válido.
+  /// Si `interactive` es true, intentará solicitar scopes adicionales y
+  /// forzar un sign-in interactivo para obtener el consentimiento del usuario.
+  Future<bool> ensureDriveAuthenticated({bool interactive = false}) async {
+    // Si ya hay token válido, todo ok.
+    if (isSignedIn) {
+      final token = await getAccessToken();
+      if (token != null && token.isNotEmpty) return true;
+    }
+
+    // Intentar restauración silenciosa si no lo hemos hecho.
+    await restoreSession();
+    final tokenAfterRestore = await getAccessToken();
+    if (tokenAfterRestore != null && tokenAfterRestore.isNotEmpty) {
+      return true;
+    }
+
+    if (!interactive) {
+      // No forzamos UI: el caller debe decidir si quiere pedir al usuario
+      // que autorice Drive interactivamente.
+      return false;
+    }
+
+    // Path interactivo: solicitar scopes (si la plataforma lo soporta) y
+    // pedir login interactivo para obtener el consentimiento del usuario.
+    try {
+      try {
+        await _googleSignIn.requestScopes([
+          'https://www.googleapis.com/auth/drive',
+        ]);
+      } catch (_) {
+        // requestScopes puede no estar disponible en todas las plataformas;
+        // ignorar y continuar con signIn.
+      }
+
+      final account = await signIn();
+      if (account == null) return false;
+      final token = await getAccessToken(forceRefresh: true);
+      return token != null && token.isNotEmpty;
+    } catch (e) {
+      debugPrint('google_auth.ensureDriveAuthenticated: Error $e');
+      return false;
+    }
+  }
+
   /// Obtiene los headers Authorization para requests a Google APIs.
   ///
   /// Retorna `{'Authorization': 'Bearer <token>'}` o null si no hay token.
