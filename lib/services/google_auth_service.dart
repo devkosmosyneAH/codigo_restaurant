@@ -21,7 +21,19 @@ enum GoogleAuthState { notAuthenticated, authenticating, authenticated, error }
 /// OD}O LO DEMÁS (Firebase, Drive, etc) DEPENDE DE ESTE SERVICIO.
 class GoogleAuthService {
   GoogleAuthService._({GoogleSignIn? googleSignIn})
-    : _googleSignIn = googleSignIn ?? _createDefaultGoogleSignIn();
+    : _googleSignIn = googleSignIn ?? _createDefaultGoogleSignIn() {
+    // Escuchar cambios de usuario para mantener el estado interno y
+    // (re)programar el refresco de token cuando haya sesión activa.
+    _googleSignIn.onCurrentUserChanged.listen((account) {
+      _currentUser = account;
+      if (account == null) {
+        _cancelTokenRefresh();
+      } else {
+        // Programar refresco cuando tengamos un usuario.
+        _scheduleTokenRefresh();
+      }
+    });
+  }
 
   static GoogleAuthService? _instance;
 
@@ -63,6 +75,10 @@ class GoogleAuthService {
   String? _cachedAccessToken;
   DateTime? _cachedAccessTokenExpiry;
   Future<String?>? _accessTokenFuture;
+  Timer? _refreshTimer;
+
+  /// Margen antes del expiry para forzar el refresh del token.
+  static const Duration _refreshMargin = Duration(minutes: 5);
 
   // ── Getters ──────────────────────────────────────────────────────────────
 
@@ -111,6 +127,7 @@ class GoogleAuthService {
         _currentUser = account;
         _state = GoogleAuthState.authenticated;
         debugPrint('google_auth.signIn: Exitoso para ${account.email}');
+        _scheduleTokenRefresh();
       } else {
         _state = GoogleAuthState.notAuthenticated;
         debugPrint('google_auth.signIn: Usuario canceló o falló');
@@ -183,6 +200,7 @@ class GoogleAuthService {
         debugPrint(
           'google_auth.signInSilently: Sesión restaurada para ${account.email}',
         );
+        _scheduleTokenRefresh();
       } else {
         _hasRestoredSession = true;
       }
@@ -235,6 +253,7 @@ class GoogleAuthService {
       _cachedAccessTokenExpiry = null;
       _accessTokenFuture = null;
       _hasRestoredSession = false;
+      _cancelTokenRefresh();
       debugPrint('google_auth.signOut: Sesión cerrada');
     }
   }
@@ -255,6 +274,7 @@ class GoogleAuthService {
       _cachedAccessTokenExpiry = null;
       _accessTokenFuture = null;
       _hasRestoredSession = false;
+      _cancelTokenRefresh();
       debugPrint('google_auth.disconnect: Desconectado de Google');
     }
   }
@@ -310,12 +330,61 @@ class GoogleAuthService {
         debugPrint(
           'google_auth.getAccessToken: Token obtenido para ${_currentUser?.email}',
         );
+        // Tras obtener token, (re)programar refresco en base al expiry.
+        _scheduleTokenRefresh();
       }
       return token;
     } catch (e) {
       debugPrint('google_auth._requestAccessToken: Error $e');
       return null;
     }
+  }
+
+  void _scheduleTokenRefresh() {
+    try {
+      _refreshTimer?.cancel();
+
+      // Si no hay usuario autenticado, nada que hacer.
+      final user = _currentUser;
+      if (user == null) return;
+
+      // Si conocemos expiry, programar antes del vencimiento.
+      final expiry = _cachedAccessTokenExpiry;
+      Duration wait;
+      if (expiry != null) {
+        final refreshAt = expiry.subtract(_refreshMargin);
+        wait = refreshAt.difference(DateTime.now());
+        if (wait.isNegative) {
+          // Si ya venció o está dentro del margen, refrescar pronto.
+          wait = const Duration(seconds: 10);
+        }
+      } else {
+        // Si no conocemos expiry, intentar refresh en 50 minutos.
+        wait = const Duration(minutes: 50);
+      }
+
+      _refreshTimer = Timer(wait, () async {
+        debugPrint(
+          'google_auth: intentando refrescar token para ${user.email}',
+        );
+        try {
+          await getAccessToken(forceRefresh: true);
+        } catch (e) {
+          debugPrint('google_auth: error al refrescar token $e');
+        }
+        // Reprogramar si el usuario sigue activo.
+        if (_currentUser != null) _scheduleTokenRefresh();
+      });
+    } catch (e) {
+      debugPrint('google_auth._scheduleTokenRefresh: $e');
+    }
+  }
+
+  void _cancelTokenRefresh() {
+    try {
+      _refreshTimer?.cancel();
+      _refreshTimer = null;
+    } catch (_) {}
   }
 
   Future<String?> getIdToken({bool forceRefresh = false}) async {
