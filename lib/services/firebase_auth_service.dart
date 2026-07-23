@@ -106,10 +106,12 @@ class FirebaseAuthService {
   }
 
   Future<Map<String, dynamic>?> restoreSessionFromFirebase() async {
-    final user = currentUser ?? await _firebaseAuth
-        .authStateChanges()
-        .firstWhere((u) => u != null, orElse: () => null)
-        .timeout(const Duration(seconds: 5), onTimeout: () => null);
+    final user =
+        currentUser ??
+        await _firebaseAuth
+            .authStateChanges()
+            .firstWhere((u) => u != null, orElse: () => null)
+            .timeout(const Duration(seconds: 5), onTimeout: () => null);
 
     if (user == null) {
       await SessionService.logout();
@@ -129,6 +131,7 @@ class FirebaseAuthService {
 
     final profile = await _syncUserToRealtimeDatabase(user);
     final sessionData = {
+      'id': user.uid,
       'uid': user.uid,
       'email': user.email,
       'name': user.displayName ?? profile?['name'] ?? 'Usuario',

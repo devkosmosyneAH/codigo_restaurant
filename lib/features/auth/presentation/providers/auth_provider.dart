@@ -121,12 +121,10 @@ class AuthChangeNotifier extends ChangeNotifier {
       return;
     }
 
-    final session = await SessionService.getCurrentUserSession();
+    var session = await SessionService.getCurrentUserSession();
     if (session == null) {
-      final firebaseSession = await sl<FirebaseAuthService>()
-          .restoreSessionFromFirebase();
-      if (firebaseSession == null) return;
-      return;
+      session = await sl<FirebaseAuthService>().restoreSessionFromFirebase();
+      if (session == null) return;
     }
 
     try {
@@ -145,6 +143,9 @@ class AuthChangeNotifier extends ChangeNotifier {
         userId: usuario.id,
         rol: usuario.rol.value,
       );
+      if (sl.isRegistered<DriveMenuConnectionService>()) {
+        await sl<DriveMenuConnectionService>().restoreSessionSilently();
+      }
       if (previousUser != _usuario) {
         notifyListeners();
       }
@@ -173,10 +174,18 @@ class AuthChangeNotifier extends ChangeNotifier {
   }
 
   Usuario _fromSessionMap(Map<String, dynamic> session) {
+    final id = session['id'] as String? ?? session['uid'] as String?;
+    if (id == null) {
+      throw StateError('Session data no contiene id/uid');
+    }
+
     return Usuario(
-      id: session['id'] as String,
+      id: id,
       restaurantId: session['restaurantId'] as String,
-      nombre: session['nombre'] as String,
+      nombre:
+          session['nombre'] as String? ??
+          session['name'] as String? ??
+          'Usuario',
       email: session['email'] as String?,
       pin: null, // PIN nunca se lee desde sesión persistida
       rol: RolUsuario.fromString(session['rol'] as String? ?? 'mesero'),
