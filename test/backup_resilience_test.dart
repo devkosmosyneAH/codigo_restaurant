@@ -146,9 +146,6 @@ void main() {
 
 class _FakeDriveFailingService implements DriveBackupService {
   @override
-  GoogleSignInAccount? get currentUser => null;
-
-  @override
   String? get currentEmail => null;
 
   @override
@@ -174,19 +171,15 @@ class _FakeDriveFailingService implements DriveBackupService {
   }
 
   @override
-  Future<GoogleSignInAccount?> signIn() async => null;
+  Future<String?> signIn() async => null;
 
   @override
-  Future<GoogleSignInAccount?> signInSilently() async => null;
+  Future<String?> signInSilently() async => null;
 
   @override
   Future<void> signOut() async {}
-  
+
   @override
-  Future<bool> ensureDriveAuthenticated({bool interactive = false}) {
-    // TODO: implement ensureDriveAuthenticated
-    throw UnimplementedError();
-  }
-
-
+  Future<bool> ensureDriveAuthenticated({bool interactive = false}) async =>
+      false;
 }

@@ -3,12 +3,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:restaurant_app/core/constants/app_constants.dart';
-import 'package:restaurant_app/services/google_auth_service.dart';
+import 'package:restaurant_app/services/drive_auth_coordinator.dart';
 
 /// Resultado de una operación de backup o restauración.
 class DriveResult {
@@ -26,13 +25,15 @@ class DriveResult {
 /// Servicio ÚNICO para respaldar/restaurar la base de datos desde Google Drive.
 ///
 /// IMPORTANTE: NO crea su propia instancia de GoogleSignIn.
-/// Reutiliza GoogleAuthService.instance para toda la autenticación.
+/// Reutiliza DriveAuthCoordinator para toda la autenticación y el acceso a Drive.
 ///
 /// Usa OAuth 2.0 con el scope de appdata (aislado por app, el usuario no
 /// ve estos archivos en su Drive normal).
 class DriveBackupService {
-  DriveBackupService._({GoogleAuthService? googleAuthService})
-    : _googleAuthService = googleAuthService ?? GoogleAuthService.instance;
+  DriveBackupService._({
+    DriveAuthCoordinator? driveAuthCoordinator,
+  }) : _driveAuthCoordinator =
+           driveAuthCoordinator ?? DriveAuthCoordinator.instance;
 
   static DriveBackupService? _instance;
 
@@ -57,138 +58,65 @@ class DriveBackupService {
   static const _backupFileName = 'lapena_backup.db';
   static const _folderName = 'La Peña Backups';
 
-  final GoogleAuthService _googleAuthService;
+  final DriveAuthCoordinator _driveAuthCoordinator;
 
   // ── Getters ──────────────────────────────────────────────────────────────
 
   /// Usuario autenticado (del servicio central).
-  GoogleSignInAccount? get currentUser => _googleAuthService.currentUser;
-
-  /// Email del usuario autenticado.
-  String? get currentEmail => _googleAuthService.currentEmail;
+  String? get currentEmail => _driveAuthCoordinator.currentEmail;
 
   /// ¿Hay un usuario autenticado?
-  bool get isSignedIn => _googleAuthService.isSignedIn;
+  bool get isSignedIn => _driveAuthCoordinator.isSignedIn;
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
-  /// Inicia sesión interactiva con Google.
-  ///
-  /// Delega a GoogleAuthService (no crea nueva instancia).
-  Future<GoogleSignInAccount?> signIn() async {
-    final account = await _googleAuthService.signIn();
-    debugPrint('drive_backup: signIn resultado=${account?.email ?? 'null'}');
-    return account;
+  /// Inicia sesión interactiva con Google Drive.
+  Future<String?> signIn() async {
+    final result = await _driveAuthCoordinator.signIn();
+    debugPrint('drive_backup: signIn resultado=${result?.email ?? 'null'}');
+    return result?.email;
   }
 
   /// Intenta iniciar sesión silenciosamente (sesión previa).
-  ///
-  /// Delega a GoogleAuthService.
-  Future<GoogleSignInAccount?> signInSilently() async {
-    final account = await _googleAuthService.restoreSession();
+  Future<String?> signInSilently() async {
+    final result = await _driveAuthCoordinator.restoreSessionSilently();
     debugPrint(
-      'drive_backup: signInSilently resultado=${account?.email ?? 'null'}',
+      'drive_backup: signInSilently resultado=${result?.email ?? 'null'}',
     );
-    return account;
+    return result?.email;
   }
 
   /// Cierra sesión.
-  ///
-  /// Delega a GoogleAuthService.
   Future<void> signOut() async {
-    await _googleAuthService.signOut();
+    await _driveAuthCoordinator.signOut();
     debugPrint('drive_backup: signOut completado');
   }
 
-  /// Expone la verificación de permisos para Drive (delegado al servicio
-  /// central de GoogleAuthService).
-  Future<bool> ensureDriveAuthenticated({bool interactive = false}) =>
-      _googleAuthService.ensureDriveAuthenticated(interactive: interactive);
+  /// Expone la verificación de permisos para Drive (delegado a DriveAuthCoordinator).
+  Future<bool> ensureDriveAuthenticated({
+    bool interactive = false,
+  }) async {
+    final result = await _driveAuthCoordinator.ensureDriveAuthenticated(
+      interactive: interactive,
+      requiredScopes: [drive.DriveApi.driveAppdataScope],
+    );
+    return result.isConnected;
+  }
 
   // ── Internal ─────────────────────────────────────────────────────────────
 
-  Future<drive.DriveApi> _getDriveApi() async {
-    const tokenError = 'Drive accessToken inválido. Reautenticación requerida.';
-
-    // Obtener usuario autenticado desde el servicio central
-    var account = _googleAuthService.currentUser;
-    if (account == null) {
-      // Intentar restaurar sesión única silenciosa.
-      account = await _googleAuthService.restoreSession();
-      if (account != null) {
-        debugPrint(
-          'drive_backup._getDriveApi: sesión activa por restoreSession '
-          'cuenta=${account.email}',
-        );
-      }
-    }
-
-    if (account == null) {
-      // Solicitar login interactivo
-      debugPrint(
-        'drive_backup._getDriveApi: sin sesión silenciosa, '
-        'forzando signIn interactivo.',
-      );
-      account = await _googleAuthService.signIn();
-      if (account != null) {
-        debugPrint(
-          'drive_backup._getDriveApi: sesión activa por signIn '
-          'cuenta=${account.email}',
-        );
-      }
-    }
-
-    if (account == null) {
-      throw StateError(
-        'No hay sesión de Google activa. '
-        'El usuario debe iniciar sesión para usar Drive.',
-      );
-    }
-
-    // Obtener token
-    // Verificar que la sesión tenga permisos para Drive sin forzar UI.
-    final hasDrive = await _googleAuthService.ensureDriveAuthenticated(
-      interactive: false,
-    );
-    if (!hasDrive) {
-      debugPrint(
-        'drive_backup._getDriveApi: sesión sin token Drive para ${account.email} (consentimiento faltante)',
-      );
-      throw StateError(
-        'Drive no autorizado: la cuenta está autenticada pero NO tiene un access token para Drive. ' 
-        'Debes ejecutar una conexión interactiva una sola vez para otorgar permisos (llama a GoogleAuthService.signIn()).',
-      );
-    }
-
-    final token = await _googleAuthService.getAccessToken();
-    if (token == null || token.isEmpty) {
-      debugPrint(
-        'drive_backup._getDriveApi: accessToken null para ${account.email}',
-      );
-      throw StateError(tokenError);
-    }
-
-    final tokenPreview = token.substring(0, token.length.clamp(0, 8));
-    debugPrint(
-      'drive_backup._getDriveApi: accessToken obtenido '
-      '($tokenPreview...) cuenta=${account.email}',
-    );
-
-    // Crear API client
-    final api = drive.DriveApi(_AuthClient({'Authorization': 'Bearer $token'}));
-
-    // Validar acceso
+  Future<drive.DriveApi> _getDriveApi({bool interactive = false}) async {
     try {
-      await api.files.list(pageSize: 1);
-      debugPrint('drive_backup._getDriveApi: Drive API validado');
-    } catch (e, st) {
-      debugPrint(
-        'drive_backup._getDriveApi: validación runtime Drive falló: $e\n$st',
+      return await _driveAuthCoordinator.createDriveApi(
+        interactive: interactive,
+        requiredScopes: [drive.DriveApi.driveAppdataScope],
       );
-      throw StateError('Autenticado pero sin acceso a Drive API.');
+    } catch (e) {
+      debugPrint('drive_backup._getDriveApi: falla al crear DriveApi: $e');
+      throw StateError(
+        'No se pudo obtener acceso a Drive AppData. Reautenticación requerida.',
+      );
     }
-
-    return api;
   }
 
   /// Obtiene o crea la carpeta de backups en Drive.
@@ -389,24 +317,5 @@ class DriveBackupService {
       debugPrint('drive_backup._ensureDriveReady: $e');
       return false;
     }
-  }
-}
-
-// ── HTTP client que adjunta los headers OAuth ────────────────────────────────
-class _AuthClient extends http.BaseClient {
-  _AuthClient(this._headers);
-  final Map<String, String> _headers;
-  final http.Client _inner = http.Client();
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) {
-    request.headers.addAll(_headers);
-    return _inner.send(request);
-  }
-
-  @override
-  void close() {
-    _inner.close();
-    super.close();
   }
 }

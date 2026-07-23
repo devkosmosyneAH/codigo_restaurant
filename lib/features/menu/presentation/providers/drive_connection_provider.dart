@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
+import 'package:restaurant_app/services/drive_auth_coordinator.dart';
 
 /// Estado de la conexión Drive para el panel admin.
 enum DriveConnectionStatus { unknown, checking, connected, disconnected }

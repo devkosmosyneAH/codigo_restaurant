@@ -109,7 +109,6 @@ class AuthChangeNotifier extends ChangeNotifier {
       userId: usuario.id,
       rol: usuario.rol.value,
     );
-    await _connectDriveAutomatically();
     if (previousUser != _usuario) {
       notifyListeners();
     }
@@ -156,7 +155,6 @@ class AuthChangeNotifier extends ChangeNotifier {
         userId: usuario.id,
         rol: usuario.rol.value,
       );
-      await _connectDriveAutomatically();
       if (previousUser != _usuario) {
         notifyListeners();
       }

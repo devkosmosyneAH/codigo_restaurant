@@ -10,6 +10,7 @@ import 'package:restaurant_app/services/facturacion/sri_service.dart';
 import 'package:restaurant_app/services/google_auth_service.dart';
 import 'package:restaurant_app/services/firebase_auth_service.dart';
 import 'package:restaurant_app/services/drive_backup_service.dart';
+import 'package:restaurant_app/services/drive_auth_coordinator.dart';
 
 // ── Mesas ────────────────────────────────────────────────────────────
 import 'package:restaurant_app/features/mesas/data/datasources/mesa_local_datasource.dart';
@@ -135,6 +136,7 @@ Future<void> initDependencies() async {
   // Registramos los servicios de autenticación de forma perezosa (lazy)
   // para evitar la inicialización temprana de GoogleSignIn en la web.
   sl.registerLazySingleton<GoogleAuthService>(() => GoogleAuthService.instance);
+  sl.registerLazySingleton<DriveAuthCoordinator>(() => DriveAuthCoordinator.instance);
   sl.registerLazySingleton<FirebaseAuthService>(
     () => FirebaseAuthService.instance,
   );

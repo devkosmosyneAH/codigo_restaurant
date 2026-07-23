@@ -61,8 +61,8 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
   final DriveBackupService _service;
 
   Future<void> _checkSignIn() async {
-    final account = await _service.signInSilently();
-    if (account != null) {
+    final email = await _service.signInSilently();
+    if (email != null) {
       final lastDate = await _service.lastBackupDate();
       // Verificar si la cuenta ya tiene token Drive válido (sin UI).
       final hasDrive = await _service.ensureDriveAuthenticated(
@@ -70,7 +70,7 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
       );
       state = state.copyWith(
         isSignedIn: true,
-        userEmail: account.email,
+        userEmail: email,
         lastBackupDate: lastDate,
         needsDriveConsent: !hasDrive,
       );
@@ -79,15 +79,15 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
 
   Future<void> signIn() async {
     state = state.copyWith(isLoading: true, clearMessage: true);
-    final account = await _service.signIn();
-    if (account != null) {
+    final email = await _service.signIn();
+    if (email != null) {
       final lastDate = await _service.lastBackupDate();
       state = state.copyWith(
         isLoading: false,
         isSignedIn: true,
-        userEmail: account.email,
+        userEmail: email,
         lastBackupDate: lastDate,
-        lastMessage: 'Sesión iniciada como ${account.email}',
+        lastMessage: 'Sesión iniciada como $email',
         lastSuccess: true,
         needsDriveConsent: false,
       );
