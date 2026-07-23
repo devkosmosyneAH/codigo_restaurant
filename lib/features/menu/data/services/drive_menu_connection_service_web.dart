@@ -13,6 +13,8 @@ import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics
 import 'package:restaurant_app/features/menu/domain/entities/drive_connection.dart';
 import 'package:restaurant_app/services/google_auth_service.dart';
 
+const List<String> _driveScopes = [drive.DriveApi.driveFileScope];
+
 /// Resultado de subida de imagen a Drive.
 class DriveUploadResult {
   final String fileId;
@@ -82,8 +84,8 @@ class DriveAuthResult {
   factory DriveAuthResult.connected({required String email}) =>
       DriveAuthResult._(status: DriveAuthStatus.connected, email: email);
 
-  factory DriveAuthResult.notConnected() =>
-      DriveAuthResult._(status: DriveAuthStatus.notConnected);
+  factory DriveAuthResult.notConnected({String? message}) =>
+      DriveAuthResult._(status: DriveAuthStatus.notConnected, message: message);
 
   factory DriveAuthResult.error({
     required String message,
@@ -199,23 +201,68 @@ class DriveMenuConnectionService {
       debugPrint('drive.auth [web]: sin sesión previa almacenada');
     }
 
-    // 2. Flujo interactivo si es necesario y está permitido.
-    if (!isSignedIn && interactive) {
+    // 2. Si ya hay sesión activa, verificar autorización para Drive.
+    if (isSignedIn) {
+      final hasDriveScope = await _googleAuthService.canAccessScopes(_driveScopes);
+      if (hasDriveScope) {
+        debugPrint(
+          'drive.auth [web]: usuario autenticado y autorizado para Drive. '
+          'cuenta=$currentEmail',
+        );
+      } else if (!interactive) {
+        debugPrint(
+          'drive.auth [web]: usuario autenticado pero Drive aún no autorizado. '
+          'no se solicitará UI en modo no interactivo.',
+        );
+        _diagnosticsService.updateDriveStatus(
+          connected: false,
+          accountEmail: currentEmail,
+          error: 'Usuario autenticado pero Drive aún no autorizado.',
+        );
+        return DriveAuthResult.notConnected(
+          message: 'Usuario autenticado pero Drive aún no autorizado.',
+        );
+      } else {
+        debugPrint(
+          'drive.auth [web]: usuario autenticado sin Drive autorizado. '
+          'solicitando permiso Drive...',
+        );
+        final scopesGranted = await _googleAuthService.requestScopes(_driveScopes);
+        if (!scopesGranted) {
+          debugPrint('drive.auth [web]: permiso Drive no concedido.');
+          return DriveAuthResult.notConnected(
+            message: 'Permiso Drive no concedido por el usuario.',
+          );
+        }
+      }
+    }
+
+    // 3. Si no hay sesión activa, iniciar sesión solo si se permite interacción.
+    if (!isSignedIn) {
+      if (!interactive) {
+        debugPrint(
+          'drive.auth [web]: sin sesión activa y no se permite interacción. '
+          'retornando notConnected.',
+        );
+        _diagnosticsService.updateDriveStatus(
+          connected: false,
+          accountEmail: null,
+          error: 'Sin sesión activa para Drive.',
+        );
+        return DriveAuthResult.notConnected();
+      }
+
       debugPrint(
         'drive.auth [web]: iniciando OAuth interactivo '
         '(selector de cuenta Google + permisos ${drive.DriveApi.driveFileScope})...',
       );
       try {
-        final success = await _googleAuthService.signIn() != null;
-        if (success) {
-          debugPrint(
-            'drive.auth [web]: OAuth exitoso '
-            'cuenta=$currentEmail scopes aprobados',
-          );
-        } else {
+        final account = await _googleAuthService.signIn();
+        if (account == null) {
           debugPrint(
             'drive.auth [web]: OAuth cancelado por usuario (signIn retornó false)',
           );
+          return DriveAuthResult.notConnected();
         }
       } catch (e, st) {
         final err = e.toString();
@@ -253,20 +300,7 @@ class DriveMenuConnectionService {
       }
     }
 
-    if (!isSignedIn) {
-      debugPrint(
-        'drive.auth [web]: sin sesión activa. '
-        'interactive=$interactive → popup no se abrirá.',
-      );
-      _diagnosticsService.updateDriveStatus(
-        connected: false,
-        accountEmail: null,
-        error: 'Sin sesión activa para Drive.',
-      );
-      return DriveAuthResult.notConnected();
-    }
-
-    // 3. Validar acceso real a la Drive API.
+    // 4. Validar acceso real a la Drive API.
     final apiOk = await validateDriveApiAccess(allowInteractive: interactive);
     if (!apiOk) {
       const msg =
@@ -595,7 +629,7 @@ class DriveMenuConnectionService {
   }
 
   Future<drive.DriveApi> _getDriveApi({bool allowInteractive = true}) async {
-    const tokenError = 'Drive accessToken inválido. Reautenticación requerida.';
+    const tokenError = 'Drive accessToken inválido. Usuario autenticado pero Drive no autorizado.';
 
     if (!isSignedIn) {
       if (allowInteractive) {
@@ -613,62 +647,47 @@ class DriveMenuConnectionService {
       }
     }
 
+    if (!await _googleAuthService.canAccessScopes(_driveScopes)) {
+      if (!allowInteractive) {
+        throw StateError('Usuario autenticado pero Drive aún no autorizado.');
+      }
+      final granted = await _googleAuthService.requestScopes(_driveScopes);
+      if (!granted) {
+        throw StateError('Drive no autorizado por el usuario.');
+      }
+    }
+
+    final token = await _googleAuthService.getAccessToken(
+      forceRefresh: true,
+      requiredScopes: _driveScopes,
+    );
+    if (token == null || token.isEmpty) {
+      debugPrint('drive.auth [web]: accessToken null');
+      throw StateError(tokenError);
+    }
+
+    final api = drive.DriveApi(
+      _AuthClient({'Authorization': 'Bearer $token'}),
+    );
+
     try {
-      final token = await _googleAuthService.getAccessToken();
-      if (token == null || token.isEmpty) {
-        debugPrint('drive.auth [web]: accessToken null');
-        throw StateError(tokenError);
-      }
-
-      final api = drive.DriveApi(
-        _AuthClient({'Authorization': 'Bearer $token'}),
-      );
-
-      try {
-        await api.files.list(pageSize: 1);
-      } catch (e, st) {
-        debugPrint('drive.auth [web]: validación runtime Drive falló: $e\n$st');
-        _diagnosticsService.updateDriveStatus(
-          connected: false,
-          accountEmail: currentEmail,
-          error: 'Validación runtime Drive fallida: $e',
-        );
-
-        if (!allowInteractive) {
-          throw StateError('Autenticado pero sin acceso a Drive API.');
-        }
-
-        // Reintenta con login interactivo
-        await _googleAuthService.signOut();
-        await _googleAuthService.signIn();
-        final retryToken = await _googleAuthService.getAccessToken();
-        if (retryToken == null || retryToken.isEmpty) {
-          throw StateError('Autenticado pero sin acceso a Drive API.');
-        }
-        final retryApi = drive.DriveApi(
-          _AuthClient({'Authorization': 'Bearer $retryToken'}),
-        );
-        await retryApi.files.list(pageSize: 1);
-        return retryApi;
-      }
-
-      _diagnosticsService.updateDriveStatus(
-        connected: true,
-        accountEmail: currentEmail,
-        tokenExpiresAt: await _tryResolveTokenExpiry(),
-      );
-      return api;
+      await api.files.list(pageSize: 1);
     } catch (e, st) {
-      if (e is StateError) rethrow;
-      final message = 'No se pudo construir DriveApi Web: $e';
+      debugPrint('drive.auth [web]: validación runtime Drive falló: $e\n$st');
       _diagnosticsService.updateDriveStatus(
         connected: false,
         accountEmail: currentEmail,
-        error: message,
+        error: 'Validación runtime Drive fallida: $e',
       );
-      debugPrint('$message\n$st');
-      throw StateError(message);
+      throw StateError('Autenticado pero sin acceso a Drive API.');
     }
+
+    _diagnosticsService.updateDriveStatus(
+      connected: true,
+      accountEmail: currentEmail,
+      tokenExpiresAt: await _tryResolveTokenExpiry(),
+    );
+    return api;
   }
 
   Future<DateTime?> _tryResolveTokenExpiry() async {

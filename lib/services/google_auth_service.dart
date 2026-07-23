@@ -80,6 +80,20 @@ class GoogleAuthService {
   /// Margen antes del expiry para forzar el refresh del token.
   static const Duration _refreshMargin = Duration(minutes: 5);
 
+  static const List<String> _driveScopes = [
+    'https://www.googleapis.com/auth/drive.file',
+  ];
+
+  /// Comprueba si el usuario actual tiene autorizados los scopes provistos.
+  Future<bool> canAccessScopes(List<String> scopes) async {
+    return await _hasScopes(scopes);
+  }
+
+  /// Solicita scopes adicionales al usuario si todavía no están autorizados.
+  Future<bool> requestScopes(List<String> scopes) async {
+    return await _requestScopes(scopes);
+  }
+
   // ── Getters ──────────────────────────────────────────────────────────────
 
   /// Usuario actualmente autenticado, o null.
@@ -273,11 +287,24 @@ class GoogleAuthService {
   ///
   /// Solo funciona si [isSignedIn] es true.
   /// Puede solicitar autorización adicional si es necesario.
-  Future<String?> getAccessToken({bool forceRefresh = false}) async {
+  Future<String?> getAccessToken({
+    bool forceRefresh = false,
+    List<String>? requiredScopes,
+  }) async {
     final user = _currentUser;
     if (user == null) {
       debugPrint('google_auth.getAccessToken: No hay usuario autenticado');
       return null;
+    }
+
+    if (requiredScopes != null && requiredScopes.isNotEmpty) {
+      final hasScopes = await _hasScopes(requiredScopes);
+      if (!hasScopes) {
+        debugPrint(
+          'google_auth.getAccessToken: Scopes requeridos no autorizados para ${user.email}: $requiredScopes',
+        );
+        return null;
+      }
     }
 
     if (!forceRefresh && _cachedAccessToken != null) {
@@ -390,6 +417,35 @@ class GoogleAuthService {
     }
   }
 
+  Future<bool> _hasScopes(List<String> scopes) async {
+    if (_currentUser == null) return false;
+    try {
+      final hasScopes = await _googleSignIn.canAccessScopes(
+        scopes,
+        accessToken: _cachedAccessToken,
+      );
+      debugPrint(
+        'google_auth._hasScopes: ${_currentUser!.email} access $hasScopes for $scopes',
+      );
+      return hasScopes;
+    } catch (e) {
+      debugPrint('google_auth._hasScopes: Error verificando scopes $e');
+      return false;
+    }
+  }
+
+  Future<bool> _requestScopes(List<String> scopes) async {
+    try {
+      final granted = await _googleSignIn.requestScopes(scopes);
+      debugPrint('google_auth._requestScopes: scopes=$scopes granted=$granted');
+      if (!granted) return false;
+      return await _hasScopes(scopes);
+    } catch (e) {
+      debugPrint('google_auth._requestScopes: Error $e');
+      return false;
+    }
+  }
+
   /// Asegura que la sesión tenga permisos para acceder a Google Drive.
   ///
   /// Si `interactive` es false, solo intentará restaurar la sesión y obtener
@@ -397,45 +453,56 @@ class GoogleAuthService {
   /// Si `interactive` es true, intentará solicitar scopes adicionales y
   /// forzar un sign-in interactivo para obtener el consentimiento del usuario.
   Future<bool> ensureDriveAuthenticated({bool interactive = false}) async {
-    // Si ya hay token válido, todo ok.
-    if (isSignedIn) {
-      final token = await getAccessToken();
-      if (token != null && token.isNotEmpty) return true;
+    final scopes = _driveScopes;
+
+    if (!isSignedIn) {
+      await restoreSession();
     }
 
-    // Intentar restauración silenciosa si no lo hemos hecho.
-    await restoreSession();
-    final tokenAfterRestore = await getAccessToken();
-    if (tokenAfterRestore != null && tokenAfterRestore.isNotEmpty) {
-      return true;
+    if (isSignedIn) {
+      if (await _hasScopes(scopes)) {
+        final token = await getAccessToken(
+          forceRefresh: false,
+          requiredScopes: scopes,
+        );
+        if (token != null && token.isNotEmpty) {
+          debugPrint(
+            'google_auth.ensureDriveAuthenticated: Drive autorizado y token válido.',
+          );
+          return true;
+        }
+      }
     }
 
     if (!interactive) {
-      // No forzamos UI: el caller debe decidir si quiere pedir al usuario
-      // que autorice Drive interactivamente.
       return false;
     }
 
-    // Path interactivo: solicitar scopes (si la plataforma lo soporta) y
-    // pedir login interactivo para obtener el consentimiento del usuario.
-    try {
-      try {
-        await _googleSignIn.requestScopes([
-          'https://www.googleapis.com/auth/drive',
-        ]);
-      } catch (_) {
-        // requestScopes puede no estar disponible en todas las plataformas;
-        // ignorar y continuar con signIn.
-      }
-
+    if (!isSignedIn) {
       final account = await signIn();
-      if (account == null) return false;
-      final token = await getAccessToken(forceRefresh: true);
-      return token != null && token.isNotEmpty;
-    } catch (e) {
-      debugPrint('google_auth.ensureDriveAuthenticated: Error $e');
-      return false;
+      if (account == null) {
+        debugPrint(
+          'google_auth.ensureDriveAuthenticated: signIn interactivo cancelado o fallido.',
+        );
+        return false;
+      }
     }
+
+    if (!await _hasScopes(scopes)) {
+      final scopesGranted = await _requestScopes(scopes);
+      if (!scopesGranted) {
+        debugPrint(
+          'google_auth.ensureDriveAuthenticated: No se autorizaron los scopes de Drive.',
+        );
+        return false;
+      }
+    }
+
+    final token = await getAccessToken(
+      forceRefresh: true,
+      requiredScopes: scopes,
+    );
+    return token != null && token.isNotEmpty;
   }
 
   /// Obtiene los headers Authorization para requests a Google APIs.
@@ -451,10 +518,7 @@ class GoogleAuthService {
 
   static GoogleSignIn _createDefaultGoogleSignIn() {
     return GoogleSignIn(
-      scopes: [
-        // Drive scope (requirido para backup y menú)
-        'https://www.googleapis.com/auth/drive',
-      ],
+      scopes: _driveScopes,
       clientId: AppEnvironment.googleClientId.isEmpty
           ? null
           : AppEnvironment.googleClientId,
