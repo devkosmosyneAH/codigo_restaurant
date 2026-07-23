@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 
@@ -19,6 +20,7 @@ class FirebaseAppInitializer {
           storageBucket: 'restaura-a1e34.firebasestorage.app',
         ),
       );
+      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
       return;
     }
 

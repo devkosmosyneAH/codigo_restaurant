@@ -518,7 +518,10 @@ class GoogleAuthService {
 
   static GoogleSignIn _createDefaultGoogleSignIn() {
     return GoogleSignIn(
-      scopes: _driveScopes,
+      // Usar scopes mínimos en la inicialización para no forzar el prompt de
+      // Drive en cada recarga. Los scopes de Drive se solicitan explícitamente
+      // solo cuando el usuario navega a una funcionalidad de Drive.
+      scopes: const [],
       clientId: AppEnvironment.googleClientId.isEmpty
           ? null
           : AppEnvironment.googleClientId,
