@@ -46,16 +46,6 @@ class AuthChangeNotifier extends ChangeNotifier {
     );
   }
 
-  Future<void> _connectDriveAutomatically() async {
-    if (!sl.isRegistered<DriveMenuConnectionService>()) return;
-
-    try {
-      await sl<DriveMenuConnectionService>().restoreSessionSilently();
-    } catch (_) {
-      // El login debe seguir aunque Drive no esté disponible en este momento.
-    }
-  }
-
   /// Autentica al usuario mediante Firebase Authentication.
   Future<String?> loginWithEmailAndPassword({
     required String email,
