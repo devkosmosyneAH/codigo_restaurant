@@ -70,7 +70,7 @@ class GoogleAuthService {
   Future<GoogleSignInAccount?>? _restoreFuture;
 
   /// Marca si la restauración de sesión silenciosa ya se intentó una vez.
-  bool _hasRestoredSession = false;
+  // bool _hasRestoredSession = false; // Removed single-attempt flag
 
   String? _cachedAccessToken;
   DateTime? _cachedAccessTokenExpiry;
@@ -164,19 +164,6 @@ class GoogleAuthService {
       debugPrint('google_auth.signInSilently: Ya hay usuario autenticado');
       return _currentUser;
     }
-
-    if (_hasRestoredSession) {
-      debugPrint(
-        'google_auth.signInSilently: Restauración ya intentada anteriormente, no se reintentará.',
-      );
-      return null;
-    }
-
-    if (_restoreFuture != null) {
-      debugPrint('google_auth.signInSilently: Reutilizando Future en progreso');
-      return _restoreFuture;
-    }
-
     if (_loginFuture != null) {
       debugPrint(
         'google_auth.signInSilently: Esperando signIn en progreso antes de restaurar',
@@ -188,26 +175,32 @@ class GoogleAuthService {
         return logged;
       }
     }
+    // Evitar múltiples restauraciones concurrentes reutilizando la Future.
+    if (_restoreFuture != null) {
+      debugPrint(
+        'google_auth.signInSilently: Reutilizando Future de restauración',
+      );
+      return await _restoreFuture;
+    }
 
     _restoreFuture = _performSignInSilently();
-
     try {
       final account = await _restoreFuture;
       if (account != null) {
         _currentUser = account;
         _state = GoogleAuthState.authenticated;
-        _hasRestoredSession = true;
         debugPrint(
           'google_auth.signInSilently: Sesión restaurada para ${account.email}',
         );
         _scheduleTokenRefresh();
       } else {
-        _hasRestoredSession = true;
+        debugPrint(
+          'google_auth.signInSilently: No se encontró sesión silenciosa',
+        );
       }
       return account;
     } catch (e) {
       debugPrint('google_auth.signInSilently: Error $e');
-      _hasRestoredSession = true;
       return null;
     } finally {
       _restoreFuture = null;
@@ -218,11 +211,8 @@ class GoogleAuthService {
   ///
   /// Esta llamada es la única que debe ejecutarse desde el arranque del app.
   Future<GoogleSignInAccount?> restoreSession() async {
-    if (_hasRestoredSession) {
-      debugPrint('google_auth.restoreSession: restauración ya ejecutada');
-      return _currentUser;
-    }
-
+    // Siempre delegar a signInSilently() para que el caller pueda decidir
+    // cuándo intentar restaurar (se permiten reintentos controlados).
     return await signInSilently();
   }
 
@@ -252,7 +242,6 @@ class GoogleAuthService {
       _cachedAccessToken = null;
       _cachedAccessTokenExpiry = null;
       _accessTokenFuture = null;
-      _hasRestoredSession = false;
       _cancelTokenRefresh();
       debugPrint('google_auth.signOut: Sesión cerrada');
     }
@@ -273,7 +262,6 @@ class GoogleAuthService {
       _cachedAccessToken = null;
       _cachedAccessTokenExpiry = null;
       _accessTokenFuture = null;
-      _hasRestoredSession = false;
       _cancelTokenRefresh();
       debugPrint('google_auth.disconnect: Desconectado de Google');
     }

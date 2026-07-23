@@ -51,18 +51,20 @@ Future<void> main() async {
     debugPrint('STEP 6 - ActivationChangeNotifier.loadStatus');
     await sl<ActivationChangeNotifier>().loadStatus();
 
-    debugPrint('STEP 7 - GoogleAuthService.restoreSession');
-    await sl<GoogleAuthService>().restoreSession();
-
+    // Mover la restauración de sesión de Google a post-frame para evitar
+    // condiciones de carrera con la inicialización de plugins nativos.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
+        debugPrint('STEP 7 - GoogleAuthService.restoreSession (post frame)');
+        await sl<GoogleAuthService>().restoreSession();
+
         debugPrint('STEP 8 - AuthChangeNotifier.restoreSession (post frame)');
         await sl<AuthChangeNotifier>().restoreSession();
       } catch (e, st) {
-        debugPrint('ERROR EN STEP 8 - AuthChangeNotifier.restoreSession');
+        debugPrint('ERROR EN RESTORE SESSIONS (post frame)');
         debugPrint(e.toString());
         debugPrintStack(stackTrace: st);
-        rethrow;
+        // No rethrow: evitar bloquear el arranque por problemas de sesión.
       }
     });
 

@@ -181,5 +181,12 @@ class _FakeDriveFailingService implements DriveBackupService {
 
   @override
   Future<void> signOut() async {}
+  
+  @override
+  Future<bool> ensureDriveAuthenticated({bool interactive = false}) {
+    // TODO: implement ensureDriveAuthenticated
+    throw UnimplementedError();
+  }
+
 
 }
