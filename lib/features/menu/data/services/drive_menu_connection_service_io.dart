@@ -15,7 +15,6 @@ import 'package:restaurant_app/features/menu/data/models/drive_connection_model.
 import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
 import 'package:restaurant_app/features/menu/domain/entities/drive_connection.dart';
 import 'package:restaurant_app/services/drive_auth_coordinator.dart';
-import 'package:restaurant_app/services/google_auth_service.dart';
 
 /// Resultado de subida de imagen a Drive.
 class DriveUploadResult {
@@ -70,7 +69,8 @@ class DriveCleanupResult {
 /// Servicio ÚNICO de conexión a Drive para imágenes del menú.
 ///
 /// IMPORTANTE: NO crea su propia instancia de GoogleSignIn.
-/// Reutiliza GoogleAuthService.instance para toda la autenticación.
+/// Reutiliza DriveAuthCoordinator para toda la autenticación y la gestión
+/// de tokens de Drive.
 ///
 /// Responsabilidades:
 /// 1. Crea/recupera una subcarpeta por tenant dentro de [AppEnvironment.driveRootFolderId]
@@ -79,26 +79,24 @@ class DriveCleanupResult {
 /// 4. Mantiene cache local para fallback offline
 ///
 /// Seguridad:
-/// - No persiste tokens OAuth: GoogleAuthService los administra
+/// - No persiste tokens OAuth: DriveAuthCoordinator administra el acceso a Google
+///   y el refresco de credenciales.
 /// - No expone credenciales: la página pública solo usa URLs públicas
 class DriveMenuConnectionService {
   final DriveConnectionLocalDatasource _datasource;
   final MenuSyncDiagnosticsService _diagnosticsService;
   final DriveAuthCoordinator _driveAuthCoordinator;
-  final GoogleAuthService _googleAuthService;
   final Uuid _uuid;
 
   DriveMenuConnectionService({
     required DriveConnectionLocalDatasource datasource,
     MenuSyncDiagnosticsService? diagnosticsService,
     DriveAuthCoordinator? driveAuthCoordinator,
-    GoogleAuthService? googleAuthService,
     Uuid? uuid,
   }) : _datasource = datasource,
        _diagnosticsService = diagnosticsService ?? MenuSyncDiagnosticsService(),
        _driveAuthCoordinator =
            driveAuthCoordinator ?? DriveAuthCoordinator.instance,
-       _googleAuthService = googleAuthService ?? GoogleAuthService.instance,
        _uuid = uuid ?? const Uuid();
 
   String? _lastAuthError;
@@ -527,7 +525,7 @@ class DriveMenuConnectionService {
     if (!isSignedIn) return null;
 
     try {
-      final idToken = await _googleAuthService.getIdToken();
+      final idToken = await _driveAuthCoordinator.getIdToken();
       return _decodeJwtExpiry(idToken);
     } catch (_) {
       return null;
@@ -584,23 +582,5 @@ class DriveMenuConnectionService {
     } catch (_) {
       return null;
     }
-  }
-}
-
-class _AuthClient extends http.BaseClient {
-  _AuthClient(this._headers);
-  final Map<String, String> _headers;
-  final http.Client _inner = http.Client();
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) {
-    request.headers.addAll(_headers);
-    return _inner.send(request);
-  }
-
-  @override
-  void close() {
-    _inner.close();
-    super.close();
   }
 }

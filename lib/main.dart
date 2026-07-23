@@ -10,7 +10,7 @@ import 'package:restaurant_app/core/theme/app_theme.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
-import 'package:restaurant_app/services/google_auth_service.dart';
+import 'package:restaurant_app/services/drive_auth_coordinator.dart';
 
 /// Punto de entrada de la aplicación RestaurantApp.
 ///
@@ -55,8 +55,8 @@ Future<void> main() async {
     // condiciones de carrera con la inicialización de plugins nativos.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        debugPrint('STEP 7 - GoogleAuthService.restoreSession (post frame)');
-        await sl<GoogleAuthService>().restoreSession();
+        debugPrint('STEP 7 - DriveAuthCoordinator.restoreSessionSilently (post frame)');
+        await sl<DriveAuthCoordinator>().restoreSessionSilently();
 
         debugPrint('STEP 8 - AuthChangeNotifier.restoreSession (post frame)');
         await sl<AuthChangeNotifier>().restoreSession();

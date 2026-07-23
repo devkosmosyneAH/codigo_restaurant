@@ -7,7 +7,6 @@ import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
 import 'package:restaurant_app/services/facturacion/sri_service.dart';
-import 'package:restaurant_app/services/google_auth_service.dart';
 import 'package:restaurant_app/services/firebase_auth_service.dart';
 import 'package:restaurant_app/services/drive_backup_service.dart';
 import 'package:restaurant_app/services/drive_auth_coordinator.dart';
@@ -132,11 +131,14 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<SriService>(() => SriServiceImpl());
 
   // ── Autenticación centralizada ───────────────────────────────────
-  // IMPORTANTE: El orden importa aquí. GoogleAuthService es la base.
-  // Registramos los servicios de autenticación de forma perezosa (lazy)
-  // para evitar la inicialización temprana de GoogleSignIn en la web.
-  sl.registerLazySingleton<GoogleAuthService>(() => GoogleAuthService.instance);
-  sl.registerLazySingleton<DriveAuthCoordinator>(() => DriveAuthCoordinator.instance);
+  // IMPORTANTE: DriveAuthCoordinator centraliza el acceso a Drive y al
+  // token de Google, mientras que GoogleAuthService queda como implementación
+  // interna delegada desde el coordinador.
+  // Registramos los servicios de forma perezosa (lazy) para evitar la
+  // inicialización temprana de GoogleSignIn en la web.
+  sl.registerLazySingleton<DriveAuthCoordinator>(
+    () => DriveAuthCoordinator.instance,
+  );
   sl.registerLazySingleton<FirebaseAuthService>(
     () => FirebaseAuthService.instance,
   );
@@ -237,11 +239,8 @@ void _initMenu() {
     () => DriveConnectionLocalDatasource(dbHelper: sl()),
   );
   sl.registerLazySingleton<DriveMenuConnectionService>(
-    () => DriveMenuConnectionService(
-      datasource: sl(),
-      diagnosticsService: sl(),
-      googleAuthService: sl(),
-    ),
+    () =>
+        DriveMenuConnectionService(datasource: sl(), diagnosticsService: sl()),
   );
   sl.registerLazySingleton<MenuRealtimeDatabaseService>(
     () => MenuRealtimeDatabaseService(diagnosticsService: sl()),
