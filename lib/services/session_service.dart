@@ -35,6 +35,28 @@ class InMemorySensitiveSessionStore implements SensitiveSessionStore {
   }
 }
 
+class _SharedPreferencesSensitiveSessionStore implements SensitiveSessionStore {
+  const _SharedPreferencesSensitiveSessionStore();
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, value);
+  }
+
+  @override
+  Future<String?> read({required String key}) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(key);
+  }
+
+  @override
+  Future<void> delete({required String key}) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(key);
+  }
+}
+
 class _FlutterSecureSessionStore implements SensitiveSessionStore {
   _FlutterSecureSessionStore()
     : _storage = const FlutterSecureStorage(
@@ -70,8 +92,8 @@ class SessionService {
   static const Uuid _uuid = Uuid();
 
   static SensitiveSessionStore _sensitiveStore = _FlutterSecureSessionStore();
-  static final InMemorySensitiveSessionStore _fallbackStore =
-      InMemorySensitiveSessionStore();
+  static final SensitiveSessionStore _fallbackStore =
+      const _SharedPreferencesSensitiveSessionStore();
 
   @visibleForTesting
   static void overrideSensitiveStore(SensitiveSessionStore store) {
@@ -81,7 +103,6 @@ class SessionService {
   @visibleForTesting
   static void resetSensitiveStore() {
     _sensitiveStore = _FlutterSecureSessionStore();
-    _fallbackStore.clear();
   }
 
   static Future<String?> _readSensitiveSessionJson() async {
@@ -100,7 +121,7 @@ class SessionService {
       await _sensitiveStore.write(key: _secureSessionKey, value: value);
       persisted = true;
     } catch (_) {
-      // Si el plugin no está disponible, usar fallback en memoria.
+      // Si el plugin no está disponible, usar fallback persistente en SharedPreferences.
     }
 
     if (persisted) {
