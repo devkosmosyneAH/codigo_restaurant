@@ -50,19 +50,34 @@ class _MenuPageState extends ConsumerState<MenuPage>
     final totalTabs = categoriaCount + 1;
     if (_tabController == null || _tabCount != totalTabs) {
       _tabController?.dispose();
-      _tabController = TabController(length: totalTabs, vsync: this);
+      _tabController = TabController(
+        length: totalTabs,
+        vsync: this,
+        initialIndex: 0,
+      );
       _tabCount = totalTabs;
       _tabController!.addListener(() {
-        if (!_tabController!.indexIsChanging) {
-          final notifier = ref.read(menuProvider.notifier);
-          final state = ref.read(menuProvider);
-          if (_tabController!.index == 0) {
-            notifier.seleccionarCategoria(null);
-          } else {
-            final cat = state.categorias[_tabController!.index - 1];
-            notifier.seleccionarCategoria(cat.id);
-          }
+        if (_tabController == null || _tabController!.indexIsChanging) {
+          return;
         }
+
+        final notifier = ref.read(menuProvider.notifier);
+        final state = ref.read(menuProvider);
+        final tabIndex = _tabController!.index;
+
+        if (tabIndex <= 0) {
+          notifier.seleccionarCategoria(null);
+          return;
+        }
+
+        final categoryIndex = tabIndex - 1;
+        if (categoryIndex >= state.categorias.length) {
+          notifier.seleccionarCategoria(null);
+          return;
+        }
+
+        final cat = state.categorias[categoryIndex];
+        notifier.seleccionarCategoria(cat.id);
       });
     }
   }
@@ -477,6 +492,10 @@ class _MenuPageState extends ConsumerState<MenuPage>
             ),
             itemCount: productos.length,
             itemBuilder: (_, i) {
+              if (i < 0 || i >= productos.length) {
+                return const SizedBox.shrink();
+              }
+
               final p = productos[i];
               final catNombre = state.categorias
                   .where((c) => c.id == p.categoriaId)
