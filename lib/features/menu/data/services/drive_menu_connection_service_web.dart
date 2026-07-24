@@ -88,7 +88,9 @@ class DriveMenuConnectionService {
 
   Future<bool> signIn() async {
     try {
+      debugPrint('MENU_DRIVE_DELETE [1] Iniciando signIn de Drive (web)');
       final connected = await _driveAuthCoordinator.signIn() != null;
+      debugPrint('MENU_DRIVE_DELETE [2] Resultado signIn=$connected');
       _diagnosticsService.updateDriveStatus(
         connected: connected,
         accountEmail: currentEmail,
@@ -100,6 +102,9 @@ class DriveMenuConnectionService {
       );
       return connected;
     } catch (e, st) {
+      debugPrint('MENU_DRIVE_DELETE ERROR [signIn]');
+      debugPrint(e.toString());
+      debugPrint(st.toString());
       _diagnosticsService.updateDriveStatus(
         connected: false,
         accountEmail: currentEmail,
@@ -383,13 +388,19 @@ class DriveMenuConnectionService {
 
   Future<bool> tryDeleteProductImage(String fileId) async {
     try {
+      debugPrint('MENU_DRIVE_DELETE [3] Intentando borrar imagen Drive fileId=$fileId');
       final api = await _driveAuthCoordinator.createDriveApi(
         interactive: true,
         requiredScopes: [drive.DriveApi.driveFileScope],
       );
+      debugPrint('MENU_DRIVE_DELETE [4] API Drive creada');
       await api.files.delete(fileId);
+      debugPrint('MENU_DRIVE_DELETE [5] Imagen eliminada en Drive');
       return true;
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('MENU_DRIVE_DELETE ERROR [tryDeleteProductImage]');
+      debugPrint(e.toString());
+      debugPrint(st.toString());
       _diagnosticsService.recordError('Error al borrar imagen en Drive: $e');
       return false;
     }

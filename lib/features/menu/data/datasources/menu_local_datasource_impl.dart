@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:restaurant_app/core/database/database_helper.dart';
 import 'package:restaurant_app/core/errors/exceptions.dart';
@@ -305,14 +306,20 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   @override
   Future<void> deleteProducto(String id) async {
     try {
+      debugPrint('MENU_DATASOURCE_DELETE [1] Entrando al datasource');
+      debugPrint('MENU_DATASOURCE_DELETE [2] Producto id=$id');
+      debugPrint('MENU_DATASOURCE_DELETE [3] Iniciando transacción de borrado');
+
       // Soft-delete también las variantes
       await _dbHelper.transaction((txn) async {
+        debugPrint('MENU_DATASOURCE_DELETE [4] Actualizando variantes');
         await txn.update(
           _tableVariantes,
           {'activo': 0, 'updated_at': DateTime.now().toIso8601String()},
           where: 'producto_id = ?',
           whereArgs: [id],
         );
+        debugPrint('MENU_DATASOURCE_DELETE [5] Actualizando producto');
         await txn.update(
           _tableProductos,
           {'activo': 0, 'updated_at': DateTime.now().toIso8601String()},
@@ -320,20 +327,29 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
           whereArgs: [id],
         );
       });
+      debugPrint('MENU_DATASOURCE_DELETE [6] Transacción completada');
+
+      debugPrint('MENU_DATASOURCE_DELETE [7] Registrando operación de sincronización');
       await _syncManager.registrarOperacion(
         tabla: _tableProductos,
         registroId: id,
         operacion: SyncOperation.delete,
         restaurantId: _tenantContext.restaurantId,
       );
+      debugPrint('MENU_DATASOURCE_DELETE [8] Operación registrada');
 
+      debugPrint('MENU_DATASOURCE_DELETE [9] Invocando servicio de Realtime Database');
       unawaited(
         _menuRealtimeDb.deleteProducto(
           restaurantId: _tenantContext.restaurantId,
           productoId: id,
         ),
       );
-    } catch (e) {
+      debugPrint('MENU_DATASOURCE_DELETE [10] Llamada a Realtime Database disparada');
+    } catch (e, s) {
+      debugPrint('MENU_DATASOURCE_DELETE ERROR');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       throw DatabaseException(message: 'Error al eliminar producto: $e');
     }
   }

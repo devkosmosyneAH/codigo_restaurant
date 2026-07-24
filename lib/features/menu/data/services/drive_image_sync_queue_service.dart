@@ -82,24 +82,39 @@ class DriveImageSyncQueueService {
     required String restaurantId,
     required String fileId,
   }) async {
-    final normalizedFileId = fileId.trim();
-    if (normalizedFileId.isEmpty) return;
+    try {
+      debugPrint('MENU_DRIVE_QUEUE [1] Encolando eliminación fileId=$fileId restaurantId=$restaurantId');
+      final normalizedFileId = fileId.trim();
+      if (normalizedFileId.isEmpty) {
+        debugPrint('MENU_DRIVE_QUEUE [2] fileId vacío, se omite encolar');
+        return;
+      }
 
-    final exists = await _syncManager.existePendiente(
-      tabla: localQueueTable,
-      registroId: normalizedFileId,
-    );
-    if (exists) return;
+      final exists = await _syncManager.existePendiente(
+        tabla: localQueueTable,
+        registroId: normalizedFileId,
+      );
+      debugPrint('MENU_DRIVE_QUEUE [3] Ya existe pendiente=$exists');
+      if (exists) return;
 
-    await _syncManager.registrarOperacion(
-      tabla: localQueueTable,
-      registroId: normalizedFileId,
-      operacion: SyncOperation.delete,
-      restaurantId: restaurantId,
-      datos: {'kind': _deleteImageKind, 'file_id': normalizedFileId},
-    );
+      debugPrint('MENU_DRIVE_QUEUE [4] Registrando operación pendiente');
+      await _syncManager.registrarOperacion(
+        tabla: localQueueTable,
+        registroId: normalizedFileId,
+        operacion: SyncOperation.delete,
+        restaurantId: restaurantId,
+        datos: {'kind': _deleteImageKind, 'file_id': normalizedFileId},
+      );
+      debugPrint('MENU_DRIVE_QUEUE [5] Operación registrada');
 
-    await countPendingOperations();
+      await countPendingOperations();
+      debugPrint('MENU_DRIVE_QUEUE [6] Conteo de pendientes actualizado');
+    } catch (e, s) {
+      debugPrint('MENU_DRIVE_QUEUE ERROR');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+      rethrow;
+    }
   }
 
   Future<void> enqueueUploadImage({
@@ -181,80 +196,95 @@ class DriveImageSyncQueueService {
     bool allowInteractiveSignIn = false,
     int maxToProcess = 40,
   }) async {
-    final pending = await _syncManager.obtenerPendientesPorTabla(
-      localQueueTable,
-    );
-    _diagnosticsService?.updatePendingQueueCount(pending.length);
-
-    if (pending.isEmpty) {
-      await _runAutoCleanupIfDue(allowInteractiveSignIn: false);
-      return const DriveQueueProcessResult(
-        totalQueued: 0,
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-        deferred: 0,
+    try {
+      debugPrint('MENU_DRIVE_QUEUE [7] Procesando cola pendiente');
+      final pending = await _syncManager.obtenerPendientesPorTabla(
+        localQueueTable,
       );
-    }
+      debugPrint('MENU_DRIVE_QUEUE [8] Pendientes encontrados=${pending.length}');
+      _diagnosticsService?.updatePendingQueueCount(pending.length);
 
-    var signedIn = await _driveService.restoreSessionSilently();
-    if (!signedIn && allowInteractiveSignIn) {
-      signedIn = await _driveService.signIn();
-    }
+      if (pending.isEmpty) {
+        debugPrint('MENU_DRIVE_QUEUE [9] No hay pendientes');
+        await _runAutoCleanupIfDue(allowInteractiveSignIn: false);
+        return const DriveQueueProcessResult(
+          totalQueued: 0,
+          processed: 0,
+          succeeded: 0,
+          failed: 0,
+          deferred: 0,
+        );
+      }
 
-    if (!signedIn) {
-      _diagnosticsService?.updateDriveStatus(
-        connected: false,
-        accountEmail: _driveService.currentEmail,
-      );
-      _diagnosticsService?.recordError(
-        'No hay sesión Drive activa para procesar la cola '
-        '(${pending.length} pendiente(s)).',
-      );
+      debugPrint('MENU_DRIVE_QUEUE [10] Restaurando sesión Drive silenciosamente');
+      var signedIn = await _driveService.restoreSessionSilently();
+      if (!signedIn && allowInteractiveSignIn) {
+        debugPrint('MENU_DRIVE_QUEUE [11] Intentando signIn interactivo');
+        signedIn = await _driveService.signIn();
+      }
+
+      if (!signedIn) {
+        debugPrint('MENU_DRIVE_QUEUE [12] No hay sesión Drive activa');
+        _diagnosticsService?.updateDriveStatus(
+          connected: false,
+          accountEmail: _driveService.currentEmail,
+        );
+        _diagnosticsService?.recordError(
+          'No hay sesión Drive activa para procesar la cola '
+          '(${pending.length} pendiente(s)).',
+        );
+        return DriveQueueProcessResult(
+          totalQueued: pending.length,
+          processed: 0,
+          succeeded: 0,
+          failed: 0,
+          deferred: pending.length,
+        );
+      }
+
+      debugPrint('MENU_DRIVE_QUEUE [13] Sesión Drive activa, procesando registros');
+
+      var processed = 0;
+      var succeeded = 0;
+      var failed = 0;
+
+      for (final record in pending.take(maxToProcess)) {
+        processed++;
+        final kind = record.datos?['kind']?.toString();
+
+        final outcome = switch (kind) {
+          _deleteImageKind => await _processDeleteRecord(record),
+          _uploadImageKind => await _processUploadRecord(record),
+          _ => _DriveQueueOperationOutcome.drop,
+        };
+
+        if (outcome == _DriveQueueOperationOutcome.success ||
+            outcome == _DriveQueueOperationOutcome.drop) {
+          await _syncManager.marcarSincronizado(record.id);
+          succeeded++;
+        } else {
+          await _syncManager.incrementarIntentos(record.id);
+          failed++;
+        }
+      }
+
+      final deferred = pending.length - processed;
+      await countPendingOperations();
+      await _runAutoCleanupIfDue(allowInteractiveSignIn: allowInteractiveSignIn);
+
       return DriveQueueProcessResult(
         totalQueued: pending.length,
-        processed: 0,
-        succeeded: 0,
-        failed: 0,
-        deferred: pending.length,
+        processed: processed,
+        succeeded: succeeded,
+        failed: failed,
+        deferred: deferred,
       );
+    } catch (e, s) {
+      debugPrint('MENU_DRIVE_QUEUE ERROR');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+      rethrow;
     }
-
-    var processed = 0;
-    var succeeded = 0;
-    var failed = 0;
-
-    for (final record in pending.take(maxToProcess)) {
-      processed++;
-      final kind = record.datos?['kind']?.toString();
-
-      final outcome = switch (kind) {
-        _deleteImageKind => await _processDeleteRecord(record),
-        _uploadImageKind => await _processUploadRecord(record),
-        _ => _DriveQueueOperationOutcome.drop,
-      };
-
-      if (outcome == _DriveQueueOperationOutcome.success ||
-          outcome == _DriveQueueOperationOutcome.drop) {
-        await _syncManager.marcarSincronizado(record.id);
-        succeeded++;
-      } else {
-        await _syncManager.incrementarIntentos(record.id);
-        failed++;
-      }
-    }
-
-    final deferred = pending.length - processed;
-    await countPendingOperations();
-    await _runAutoCleanupIfDue(allowInteractiveSignIn: allowInteractiveSignIn);
-
-    return DriveQueueProcessResult(
-      totalQueued: pending.length,
-      processed: processed,
-      succeeded: succeeded,
-      failed: failed,
-      deferred: deferred,
-    );
   }
 
   Future<DriveQueueProcessResult> processPendingDeletes({

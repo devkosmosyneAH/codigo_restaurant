@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
@@ -262,30 +263,50 @@ class MenuNotifier extends StateNotifier<MenuState> {
   }
 
   Future<bool> eliminarProducto(String id) async {
-    final productosPrevios = List<Producto>.from(state.productos);
-    final categoriasPrevias = List<Categoria>.from(state.categorias);
+    try {
+      debugPrint('MENU_PROVIDER_DELETE [1] Entrando al provider');
+      debugPrint('MENU_PROVIDER_DELETE [2] Producto a eliminar id=$id');
 
-    state = state.copyWith(
-      clearError: true,
-      productos: state.productos.where((p) => p.id != id).toList(),
-    );
+      final productosPrevios = List<Producto>.from(state.productos);
+      final categoriasPrevias = List<Categoria>.from(state.categorias);
+      debugPrint('MENU_PROVIDER_DELETE [3] Guardando estado previo');
 
-    final result = await _deleteProducto(id);
-    return result.fold(
-      (failure) {
-        state = state.copyWith(
-          productos: productosPrevios,
-          categorias: categoriasPrevias,
-          errorMessage: failure.message,
-        );
-        return false;
-      },
-      (_) async {
-        await loadMenu(null, true);
-        _triggerCloudSync('menu-delete-producto');
-        return true;
-      },
-    );
+      state = state.copyWith(
+        clearError: true,
+        productos: state.productos.where((p) => p.id != id).toList(),
+      );
+      debugPrint('MENU_PROVIDER_DELETE [4] Estado local actualizado');
+
+      debugPrint('MENU_PROVIDER_DELETE [5] Invocando deleteProducto del usecase');
+      final result = await _deleteProducto(id);
+      debugPrint('MENU_PROVIDER_DELETE [6] Usecase respondió');
+
+      return result.fold(
+        (failure) {
+          debugPrint('MENU_PROVIDER_DELETE ERROR [usecase] ${failure.message}');
+          state = state.copyWith(
+            productos: productosPrevios,
+            categorias: categoriasPrevias,
+            errorMessage: failure.message,
+          );
+          debugPrint('MENU_PROVIDER_DELETE [7] Estado revertido por error');
+          return false;
+        },
+        (_) async {
+          debugPrint('MENU_PROVIDER_DELETE [8] Eliminación exitosa, recargando menú');
+          await loadMenu(null, true);
+          debugPrint('MENU_PROVIDER_DELETE [9] Menú recargado');
+          _triggerCloudSync('menu-delete-producto');
+          debugPrint('MENU_PROVIDER_DELETE [10] Cloud sync disparado');
+          return true;
+        },
+      );
+    } catch (e, s) {
+      debugPrint('MENU_PROVIDER_DELETE ERROR');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+      rethrow;
+    }
   }
 
   Future<void> cambiarDisponibilidad(String id, bool disponible) async {

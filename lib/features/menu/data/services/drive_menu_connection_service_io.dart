@@ -105,8 +105,10 @@ class DriveMenuConnectionService {
 
   Future<bool> signIn() async {
     try {
+      debugPrint('MENU_DRIVE_DELETE [1] Iniciando signIn de Drive (IO)');
       final account = await _driveAuthCoordinator.signIn();
       final googleSignedIn = account != null;
+      debugPrint('MENU_DRIVE_DELETE [2] Resultado signIn=$googleSignedIn');
       _diagnosticsService.updateDriveStatus(
         connected: googleSignedIn,
         accountEmail: currentEmail,
@@ -116,7 +118,10 @@ class DriveMenuConnectionService {
                   'No se pudo autenticar la sesión de Google Drive.'),
       );
       return googleSignedIn;
-    } catch (e) {
+    } catch (e, s) {
+      debugPrint('MENU_DRIVE_DELETE ERROR [signIn]');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       _lastAuthError = 'Error en signIn: $e';
       _diagnosticsService.recordError(_lastAuthError!);
       return false;
@@ -398,15 +403,20 @@ class DriveMenuConnectionService {
   /// (por ejemplo, si ya fue borrado manualmente desde Drive Web).
   Future<bool> tryDeleteProductImage(String fileId) async {
     try {
+      debugPrint('MENU_DRIVE_DELETE [3] Intentando borrar imagen Drive fileId=$fileId');
       final api = await _driveAuthCoordinator.createDriveApi(
         interactive: true,
         requiredScopes: const [drive.DriveApi.driveFileScope],
       );
+      debugPrint('MENU_DRIVE_DELETE [4] API Drive creada');
       await api.files.delete(fileId);
+      debugPrint('MENU_DRIVE_DELETE [5] Imagen eliminada en Drive');
       return true;
-    } catch (e) {
+    } catch (e, s) {
+      debugPrint('MENU_DRIVE_DELETE ERROR [tryDeleteProductImage]');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       _diagnosticsService.recordError('Error al borrar imagen en Drive: $e');
-      // Retorna false para que el caller pueda encolar reintentos.
       return false;
     }
   }

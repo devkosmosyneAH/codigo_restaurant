@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:restaurant_app/core/config/app_environment.dart';
 import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
@@ -68,13 +69,28 @@ class MenuRealtimeDatabaseService {
     required String restaurantId,
     required String productoId,
   }) async {
-    if (!isConfigured) return false;
+    try {
+      debugPrint('MENU_RTDB_DELETE [1] Entrando al servicio Realtime Database');
+      debugPrint('MENU_RTDB_DELETE [2] restaurantId=$restaurantId productoId=$productoId');
+      if (!isConfigured) {
+        debugPrint('MENU_RTDB_DELETE [3] Realtime Database no configurado');
+        return false;
+      }
 
-    return _request(
-      method: _HttpMethod.delete,
-      uri: _productoUri(restaurantId: restaurantId, productoId: productoId),
-      operation: 'delete_producto',
-    );
+      debugPrint('MENU_RTDB_DELETE [4] Enviando petición DELETE');
+      final result = await _request(
+        method: _HttpMethod.delete,
+        uri: _productoUri(restaurantId: restaurantId, productoId: productoId),
+        operation: 'delete_producto',
+      );
+      debugPrint('MENU_RTDB_DELETE [5] Resultado de DELETE=$result');
+      return result;
+    } catch (e, s) {
+      debugPrint('MENU_RTDB_DELETE ERROR');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+      return false;
+    }
   }
 
   Uri _productoUri({required String restaurantId, required String productoId}) {

@@ -48,7 +48,8 @@ class _MenuPageState extends ConsumerState<MenuPage>
   void _syncTabController(int categoriaCount) {
     // Incluye pestaña "Todos" al inicio.
     final totalTabs = categoriaCount + 1;
-    final needsRebuild = _tabController == null ||
+    final needsRebuild =
+        _tabController == null ||
         _tabCount != totalTabs ||
         _tabController!.length != totalTabs;
 
@@ -198,67 +199,105 @@ class _MenuPageState extends ConsumerState<MenuPage>
   }
 
   Future<void> _eliminarProducto(String productoId, String nombre) async {
-    final producto = ref
-        .read(menuProvider)
-        .productos
-        .where((p) => p.id == productoId)
-        .firstOrNull;
-    final driveFileId = producto?.driveFileId;
-    final restaurantId =
-        producto?.restaurantId ?? sl<TenantContext>().restaurantId;
+    try {
+      debugPrint('MENU_DELETE [1] Entrando al método de eliminación');
+      debugPrint('MENU_DELETE [2] Producto recibido id=$productoId nombre=$nombre');
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Eliminar Producto'),
-        content: Text('¿Eliminar "$nombre" del menú?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+      final producto = ref
+          .read(menuProvider)
+          .productos
+          .where((p) => p.id == productoId)
+          .firstOrNull;
+      final driveFileId = producto?.driveFileId;
+      final restaurantId =
+          producto?.restaurantId ?? sl<TenantContext>().restaurantId;
+
+      debugPrint(
+        'MENU_DELETE [3] Producto encontrado=${producto != null} driveFileId=${driveFileId ?? 'null'} restaurantId=$restaurantId',
+      );
+
+      debugPrint('MENU_DELETE [4] Abriendo confirmación de eliminación');
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Eliminar Producto'),
+          content: Text('¿Eliminar "$nombre" del menú?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
             ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true || !mounted) return;
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
+      );
+      debugPrint('MENU_DELETE [5] Confirmación result=$confirm');
 
-    if (driveFileId != null && driveFileId.isNotEmpty) {
-      try {
-        final driveService = sl<DriveMenuConnectionService>();
-        final driveQueue = sl<DriveImageSyncQueueService>();
-        final signedIn = await driveService.signIn();
-
-        var deleted = false;
-        if (signedIn) {
-          deleted = await driveService.tryDeleteProductImage(driveFileId);
-        }
-
-        if (!deleted) {
-          await driveQueue.enqueueDeleteImage(
-            restaurantId: restaurantId,
-            fileId: driveFileId,
-          );
-          await driveQueue.processPendingOperations();
-        }
-      } catch (error, stackTrace) {
-        debugPrint('ERROR EN DELETE PRODUCTO DRIVE');
-        debugPrint(error.toString());
-        debugPrintStack(stackTrace: stackTrace);
+      if (confirm != true || !mounted) {
+        debugPrint('MENU_DELETE [6] Eliminación cancelada o widget no montado');
+        return;
       }
-    }
 
-    final ok = await ref
-        .read(menuProvider.notifier)
-        .eliminarProducto(productoId);
-    if (!ok && mounted) {
-      _showError(ref.read(menuProvider).errorMessage);
+      if (driveFileId != null && driveFileId.isNotEmpty) {
+        try {
+          debugPrint('MENU_DELETE [7] Verificando DriveFileId=$driveFileId');
+          final driveService = sl<DriveMenuConnectionService>();
+          final driveQueue = sl<DriveImageSyncQueueService>();
+          debugPrint('MENU_DELETE [8] Iniciando signIn de Drive');
+          final signedIn = await driveService.signIn();
+          debugPrint('MENU_DELETE [9] Drive signedIn=$signedIn');
+
+          var deleted = false;
+          if (signedIn) {
+            debugPrint('MENU_DELETE [10] Intentando eliminar imagen de Drive');
+            deleted = await driveService.tryDeleteProductImage(driveFileId);
+            debugPrint('MENU_DELETE [11] Resultado de eliminación en Drive=$deleted');
+          }
+
+          if (!deleted) {
+            debugPrint('MENU_DELETE [12] Encolando eliminación pendiente en Drive');
+            await driveQueue.enqueueDeleteImage(
+              restaurantId: restaurantId,
+              fileId: driveFileId,
+            );
+            debugPrint('MENU_DELETE [13] Procesando cola de Drive');
+            await driveQueue.processPendingOperations();
+            debugPrint('MENU_DELETE [14] Cola de Drive procesada');
+          }
+        } catch (error, stackTrace) {
+          debugPrint('MENU_DELETE ERROR [Drive]');
+          debugPrint(error.toString());
+          debugPrint(stackTrace.toString());
+          rethrow;
+        }
+      } else {
+        debugPrint('MENU_DELETE [7] DriveFileId nulo o vacío, se omite Drive');
+      }
+
+      debugPrint('MENU_DELETE [15] Invocando notifier.eliminarProducto');
+      final ok = await ref
+          .read(menuProvider.notifier)
+          .eliminarProducto(productoId);
+      debugPrint('MENU_DELETE [16] Resultado notifier.eliminarProducto=$ok');
+
+      if (!ok && mounted) {
+        final msg = ref.read(menuProvider).errorMessage;
+        debugPrint('MENU_DELETE [17] Error desde provider=$msg');
+        _showError(msg);
+      }
+
+      debugPrint('MENU_DELETE [18] Fin del método de eliminación');
+    } catch (e, s) {
+      debugPrint('MENU_DELETE ERROR [page]');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+      rethrow;
     }
   }
 

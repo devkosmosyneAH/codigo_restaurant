@@ -1,4 +1,5 @@
 import 'package:dartz/dartz.dart';
+import 'package:flutter/foundation.dart';
 import 'package:restaurant_app/core/errors/exceptions.dart';
 import 'package:restaurant_app/core/errors/failures.dart';
 import 'package:restaurant_app/core/utils/typedefs.dart';
@@ -141,10 +142,19 @@ class MenuRepositoryImpl implements MenuRepository {
   @override
   ResultFuture<void> deleteProducto(String id) async {
     try {
+      debugPrint('MENU_REPOSITORY_DELETE [1] Entrando al repository');
+      debugPrint('MENU_REPOSITORY_DELETE [2] Producto id=$id');
       await _dataSource.deleteProducto(id);
+      debugPrint('MENU_REPOSITORY_DELETE [3] DataSource completó eliminación');
       return const Right(null);
     } on DatabaseException catch (e) {
+      debugPrint('MENU_REPOSITORY_DELETE ERROR ${e.message}');
       return Left(DatabaseFailure(message: e.message));
+    } catch (e, s) {
+      debugPrint('MENU_REPOSITORY_DELETE ERROR');
+      debugPrint(e.toString());
+      debugPrint(s.toString());
+      rethrow;
     }
   }
 
