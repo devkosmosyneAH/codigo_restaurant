@@ -518,10 +518,12 @@ class GoogleAuthService {
 
   static GoogleSignIn _createDefaultGoogleSignIn() {
     return GoogleSignIn(
-      // Usar scopes mínimos en la inicialización para no forzar el prompt de
-      // Drive en cada recarga. Los scopes de Drive se solicitan explícitamente
-      // solo cuando el usuario navega a una funcionalidad de Drive.
-      scopes: const [],
+      // En Flutter Web, las sesiones de Google Sign-In se restauran solo si el
+      // cliente solicita los mismos scopes autorizados originalmente.
+      // Para Drive necesitamos mantener el scope entre recargas.
+      scopes: kIsWeb && AppEnvironment.isDriveConfigured
+          ? _driveScopes
+          : const [],
       clientId: AppEnvironment.googleClientId.isEmpty
           ? null
           : AppEnvironment.googleClientId,
