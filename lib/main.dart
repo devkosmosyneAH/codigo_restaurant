@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -27,8 +30,14 @@ Future<void> main() async {
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.dumpErrorToConsole(details);
-    debugPrint(details.exceptionAsString());
+    debugPrint('FLUTTER ERROR: ${details.exceptionAsString()}');
     debugPrintStack(stackTrace: details.stack);
+  };
+
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('PLATFORM DISPATCHER ERROR: $error');
+    debugPrintStack(stackTrace: stack);
+    return true;
   };
 
   try {
@@ -50,20 +59,14 @@ Future<void> main() async {
     debugPrint('STEP 6 - ActivationChangeNotifier.loadStatus');
     await sl<ActivationChangeNotifier>().loadStatus();
 
-    // Mover la restauración de sesión de Google a post-frame para evitar
-    // condiciones de carrera con la inicialización de plugins nativos.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        // Firebase Authentication session recovery is required for app access.
-        // Google Drive session recovery is deferred until the user opens a Drive
-        // feature, avoiding unnecessary OAuth work on every page refresh.
         debugPrint('STEP 7 - AuthChangeNotifier.restoreSession (post frame)');
         await sl<AuthChangeNotifier>().restoreSession();
       } catch (e, st) {
         debugPrint('ERROR EN RESTORE SESSIONS (post frame)');
         debugPrint(e.toString());
         debugPrintStack(stackTrace: st);
-        // No rethrow: evitar bloquear el arranque por problemas de sesión.
       }
     });
 
@@ -71,7 +74,12 @@ Future<void> main() async {
     await sl<HybridSyncOrchestrator>().start();
 
     debugPrint('STEP 10 - runApp');
-    runApp(const ProviderScope(child: RestaurantApp()));
+    runZonedGuarded(() {
+      runApp(const ProviderScope(child: RestaurantApp()));
+    }, (error, stack) {
+      debugPrint('ZONE ERROR: $error');
+      debugPrintStack(stackTrace: stack);
+    });
   } catch (e, s) {
     debugPrint('==============================');
     debugPrint('ERROR EN MAIN');

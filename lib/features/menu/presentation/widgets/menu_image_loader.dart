@@ -189,8 +189,10 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
             provider: _resized(MemoryImage(bytes)),
           ),
         );
-      } catch (_) {
-        // No-op: si viene corrupta, se continúa con el siguiente fallback.
+      } catch (error, stackTrace) {
+        debugPrint('ERROR AL DECODIFICAR IMAGEN EN BASE64');
+        debugPrint(error.toString());
+        debugPrintStack(stackTrace: stackTrace);
       }
       return;
     }
@@ -403,7 +405,10 @@ class _WebIndexedCachedNetworkImageState
     WebCachedImageRecord? cached;
     try {
       cached = await cache.get(url);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('ERROR EN WEB INDEXED IMAGE CACHE GET');
+      debugPrint(error.toString());
+      debugPrintStack(stackTrace: stackTrace);
       cached = null;
     }
 
@@ -442,7 +447,10 @@ class _WebIndexedCachedNetworkImageState
       }
 
       _notifyErrorOnce();
-    } catch (_) {
+    } catch (error, stackTrace) {
+      debugPrint('ERROR EN MENU IMAGE LOADER REQUEST');
+      debugPrint(error.toString());
+      debugPrintStack(stackTrace: stackTrace);
       if (!mounted) return;
       _notifyErrorOnce();
     }

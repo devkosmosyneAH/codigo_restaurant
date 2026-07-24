@@ -192,6 +192,8 @@ class _MenuPageState extends ConsumerState<MenuPage>
         .productos
         .where((p) => p.id == productoId)
         .firstOrNull;
+    final driveFileId = producto?.driveFileId;
+    final restaurantId = producto?.restaurantId ?? sl<TenantContext>().restaurantId;
 
     final confirm = await showDialog<bool>(
       context: context,
@@ -215,14 +217,11 @@ class _MenuPageState extends ConsumerState<MenuPage>
     );
     if (confirm != true || !mounted) return;
 
-    final driveFileId = producto?.driveFileId;
     if (driveFileId != null && driveFileId.isNotEmpty) {
       try {
         final driveService = sl<DriveMenuConnectionService>();
         final driveQueue = sl<DriveImageSyncQueueService>();
         final signedIn = await driveService.signIn();
-        final restaurantId =
-            producto?.restaurantId ?? sl<TenantContext>().restaurantId;
 
         var deleted = false;
         if (signedIn) {
@@ -234,11 +233,12 @@ class _MenuPageState extends ConsumerState<MenuPage>
             restaurantId: restaurantId,
             fileId: driveFileId,
           );
-          // Intento oportunista no interactivo para drenar cola si ya hay sesión.
           await driveQueue.processPendingOperations();
         }
-      } catch (_) {
-        // No bloquea el borrado local si Drive falla.
+      } catch (error, stackTrace) {
+        debugPrint('ERROR EN DELETE PRODUCTO DRIVE');
+        debugPrint(error.toString());
+        debugPrintStack(stackTrace: stackTrace);
       }
     }
 

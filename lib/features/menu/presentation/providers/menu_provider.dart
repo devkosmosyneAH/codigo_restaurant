@@ -192,8 +192,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-create-categoria');
         return true;
       },
@@ -208,8 +208,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-update-categoria');
         return true;
       },
@@ -224,8 +224,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-delete-categoria');
         return true;
       },
@@ -247,8 +247,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-create-producto');
         return true;
       },
@@ -263,8 +263,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-update-producto');
         return true;
       },
@@ -279,8 +279,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-delete-producto');
         return true;
       },
@@ -327,7 +327,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
         return false;
       }
     }
-    loadMenu(null, true);
+    await loadMenu(null, true);
     _triggerCloudSync('menu-create-variante');
     return true;
   }
@@ -340,8 +340,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-update-variante');
         return true;
       },
@@ -356,8 +356,8 @@ class MenuNotifier extends StateNotifier<MenuState> {
         state = state.copyWith(errorMessage: failure.message);
         return false;
       },
-      (_) {
-        loadMenu(null, true);
+      (_) async {
+        await loadMenu(null, true);
         _triggerCloudSync('menu-delete-variante');
         return true;
       },
