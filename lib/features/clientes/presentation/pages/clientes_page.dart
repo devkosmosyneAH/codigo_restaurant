@@ -5,6 +5,7 @@ import 'package:restaurant_app/features/clientes/domain/entities/cliente.dart';
 import 'package:restaurant_app/features/clientes/presentation/providers/cliente_provider.dart';
 import 'package:restaurant_app/features/clientes/presentation/widgets/cliente_card.dart';
 import 'package:restaurant_app/features/clientes/presentation/widgets/cliente_form_dialog.dart';
+import 'package:restaurant_app/widgets/skeleton_loader.dart';
 
 /// Página principal de gestión de Clientes.
 class ClientesPage extends ConsumerStatefulWidget {
@@ -123,7 +124,7 @@ class _ClientesPageState extends ConsumerState<ClientesPage> {
           // ── Lista ────────────────────────────────────────────────
           Expanded(
             child: state.isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const SkeletonListPlaceholder()
                 : state.listaVisible.isEmpty
                 ? _EmptyState(
                     hayClientes: state.clientes.isNotEmpty,

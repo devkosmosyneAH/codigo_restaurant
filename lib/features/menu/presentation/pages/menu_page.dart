@@ -13,6 +13,7 @@ import 'package:restaurant_app/features/menu/presentation/widgets/categoria_form
 import 'package:restaurant_app/features/menu/presentation/widgets/menu_sync_diagnostics_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_card.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_form_dialog.dart';
+import 'package:restaurant_app/widgets/skeleton_loader.dart';
 
 /// Página principal del Menú.
 ///
@@ -269,7 +270,7 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
     return Scaffold(
       body: state.isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const SkeletonListPlaceholder()
           : Column(
               children: [
                 // ── Header ─────────────────────────────────────────

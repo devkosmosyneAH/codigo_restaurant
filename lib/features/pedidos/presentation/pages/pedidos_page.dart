@@ -7,6 +7,7 @@ import 'package:restaurant_app/features/pedidos/domain/entities/pedido.dart';
 import 'package:restaurant_app/features/pedidos/presentation/providers/pedidos_provider.dart';
 import 'package:restaurant_app/features/pedidos/presentation/widgets/pedido_card.dart';
 import 'package:restaurant_app/features/pedidos/presentation/widgets/agregar_item_sheet.dart';
+import 'package:restaurant_app/widgets/skeleton_loader.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
 import 'package:go_router/go_router.dart';
 
@@ -132,7 +133,7 @@ class _PedidosPageState extends ConsumerState<PedidosPage> {
 
     // ── Cargando ───────────────────────────────────────────────
     if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const SkeletonListPlaceholder(itemCount: 5);
     }
 
     // ── Sin pedidos ────────────────────────────────────────────

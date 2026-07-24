@@ -143,6 +143,7 @@ class AppRouter {
       final isLoggedIn = auth.isAuthenticated;
       final isLoginRoute = state.matchedLocation == login;
       final loc = state.matchedLocation;
+      final isAuthLoading = auth.isSessionRestoring;
 
       // Las rutas públicas son accesibles siempre, sin importar activación
       // ni autenticación (clientes externos que escanean QR, por ejemplo).
@@ -151,6 +152,11 @@ class AppRouter {
       // A partir de aquí la ruta requiere la app activada.
       if (!activation.canAccessApp && !isLoginRoute) return login;
       if (!activation.canAccessApp && isLoginRoute) return null;
+
+      // Mientras la sesión está en restauración inicial, no forzar redirect.
+      // Esto evita perder la ruta solicitada en el refresh cuando el usuario
+      // ya tenía sesión válida guardada.
+      if (isAuthLoading) return null;
 
       if (!isLoggedIn && !isLoginRoute) return login;
       if (isLoggedIn && isLoginRoute) {

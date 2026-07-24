@@ -17,12 +17,16 @@ class AuthChangeNotifier extends ChangeNotifier {
   AuthChangeNotifier();
 
   Usuario? _usuario;
+  bool _isSessionRestoring = false;
 
   /// El usuario actualmente autenticado, o null si no hay sesión.
   Usuario? get usuario => _usuario;
 
   /// Verdadero si hay un usuario autenticado.
   bool get isAuthenticated => _usuario != null;
+
+  /// Verdadero si la restauración de sesión quedó en proceso.
+  bool get isSessionRestoring => _isSessionRestoring;
 
   bool _canUseActivatedApp() {
     if (!sl.isRegistered<ActivationChangeNotifier>()) return true;
@@ -121,13 +125,14 @@ class AuthChangeNotifier extends ChangeNotifier {
       return;
     }
 
-    var session = await SessionService.getCurrentUserSession();
-    if (session == null) {
-      session = await sl<FirebaseAuthService>().restoreSessionFromFirebase();
-      if (session == null) return;
-    }
-
+    _setSessionRestoring(true);
     try {
+      var session = await SessionService.getCurrentUserSession();
+      if (session == null) {
+        session = await sl<FirebaseAuthService>().restoreSessionFromFirebase();
+        if (session == null) return;
+      }
+
       final usuario = _fromSessionMap(session);
       if (!usuario.activo) {
         await _audit('session_invalid_inactive', userId: usuario.id);
@@ -152,7 +157,15 @@ class AuthChangeNotifier extends ChangeNotifier {
     } catch (_) {
       await _audit('session_restore_failed');
       await SessionService.logout();
+    } finally {
+      _setSessionRestoring(false);
     }
+  }
+
+  void _setSessionRestoring(bool value) {
+    if (_isSessionRestoring == value) return;
+    _isSessionRestoring = value;
+    notifyListeners();
   }
 
   /// Cierra la sesión actual y limpia la persistencia local.
@@ -179,6 +192,7 @@ class AuthChangeNotifier extends ChangeNotifier {
       throw StateError('Session data no contiene id/uid');
     }
 
+    final roleValue = session['rol'] as String? ?? session['role'] as String? ?? 'mesero';
     return Usuario(
       id: id,
       restaurantId: session['restaurantId'] as String,
@@ -188,7 +202,7 @@ class AuthChangeNotifier extends ChangeNotifier {
           'Usuario',
       email: session['email'] as String?,
       pin: null, // PIN nunca se lee desde sesión persistida
-      rol: RolUsuario.fromString(session['rol'] as String? ?? 'mesero'),
+      rol: RolUsuario.fromString(roleValue),
       activo: session['activo'] as bool? ?? true,
       createdAt:
           DateTime.tryParse(session['createdAt'] as String? ?? '') ??

@@ -165,7 +165,17 @@ class SessionService {
     try {
       final prefs = await SharedPreferences.getInstance();
 
-      final userJson = jsonEncode(userData);
+      final normalizedUserData = Map<String, dynamic>.from(userData);
+      if (normalizedUserData.containsKey('role') &&
+          !normalizedUserData.containsKey('rol')) {
+        normalizedUserData['rol'] = normalizedUserData['role'];
+      }
+      if (normalizedUserData.containsKey('rol') &&
+          !normalizedUserData.containsKey('role')) {
+        normalizedUserData['role'] = normalizedUserData['rol'];
+      }
+
+      final userJson = jsonEncode(normalizedUserData);
       await _writeSensitiveSessionJson(userJson);
       await prefs.remove(_legacySessionKey);
       await prefs.setBool(_isLoggedInKey, true);
