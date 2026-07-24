@@ -246,35 +246,17 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
       if (driveFileId != null && driveFileId.isNotEmpty) {
         try {
-          debugPrint('MENU_DELETE [7] Verificando DriveFileId=$driveFileId');
-          final driveService = sl<DriveMenuConnectionService>();
+          debugPrint('MENU_DELETE [7] Encolando eliminación de imagen en Drive');
           final driveQueue = sl<DriveImageSyncQueueService>();
-          debugPrint('MENU_DELETE [8] Iniciando signIn de Drive');
-          final signedIn = await driveService.signIn();
-          debugPrint('MENU_DELETE [9] Drive signedIn=$signedIn');
-
-          var deleted = false;
-          if (signedIn) {
-            debugPrint('MENU_DELETE [10] Intentando eliminar imagen de Drive');
-            deleted = await driveService.tryDeleteProductImage(driveFileId);
-            debugPrint('MENU_DELETE [11] Resultado de eliminación en Drive=$deleted');
-          }
-
-          if (!deleted) {
-            debugPrint('MENU_DELETE [12] Encolando eliminación pendiente en Drive');
-            await driveQueue.enqueueDeleteImage(
-              restaurantId: restaurantId,
-              fileId: driveFileId,
-            );
-            debugPrint('MENU_DELETE [13] Procesando cola de Drive');
-            await driveQueue.processPendingOperations();
-            debugPrint('MENU_DELETE [14] Cola de Drive procesada');
-          }
+          await driveQueue.enqueueDeleteImage(
+            restaurantId: restaurantId,
+            fileId: driveFileId,
+          );
+          debugPrint('MENU_DELETE [8] Eliminación de imagen en Drive encolada');
         } catch (error, stackTrace) {
-          debugPrint('MENU_DELETE ERROR [Drive]');
+          debugPrint('MENU_DELETE ERROR [Drive enqueue]');
           debugPrint(error.toString());
           debugPrint(stackTrace.toString());
-          rethrow;
         }
       } else {
         debugPrint('MENU_DELETE [7] DriveFileId nulo o vacío, se omite Drive');
