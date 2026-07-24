@@ -16,6 +16,17 @@ void main() {
       );
     });
 
+    test('keeps canonical google drive public urls intact', () {
+      final normalized = normalizeDriveImageUrl(
+        'https://drive.google.com/uc?export=view&id=abc123_xyz',
+      );
+
+      expect(
+        normalized,
+        'https://drive.google.com/uc?export=view&id=abc123_xyz',
+      );
+    });
+
     test('returns an empty list for blank values', () {
       expect(buildDriveImageCandidates(null), isEmpty);
       expect(buildDriveImageCandidates('   '), isEmpty);

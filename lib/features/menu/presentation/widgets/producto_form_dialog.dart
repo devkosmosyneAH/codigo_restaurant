@@ -11,6 +11,7 @@ import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
+import 'package:restaurant_app/features/menu/presentation/widgets/menu_image_loader.dart';
 import 'package:restaurant_app/features/menu/domain/entities/categoria.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
 import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
@@ -401,24 +402,9 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
     );
   }
 
-  /// Convierte URLs de Google Drive al formato usercontent para evitar CORS
-  /// al renderizar en Flutter Web.
+  /// Convierte URLs de Google Drive al formato público compatible con Flutter Web.
   String _fixGoogleDriveUrl(String url) {
-    if (url.isEmpty) return url;
-
-    if (url.contains('lh3.googleusercontent.com/d/')) {
-      return url;
-    }
-
-    final regExp = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
-    final match = regExp.firstMatch(url);
-
-    if (match != null && match.groupCount > 0) {
-      final fileId = match.group(1)!;
-      return 'https://lh3.googleusercontent.com/d/$fileId';
-    }
-
-    return url;
+    return normalizeDriveImageUrl(url);
   }
 
   Future<void> _pickImage() async {

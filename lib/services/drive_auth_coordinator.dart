@@ -32,20 +32,16 @@ class DriveAuthResult {
       DriveAuthResult._(status: DriveAuthStatus.connected, email: email);
 
   factory DriveAuthResult.notConnected({String? message}) =>
-      DriveAuthResult._(
-        status: DriveAuthStatus.notConnected,
-        message: message,
-      );
+      DriveAuthResult._(status: DriveAuthStatus.notConnected, message: message);
 
   factory DriveAuthResult.error({
     required String message,
     bool isPopupBlocked = false,
-  }) =>
-      DriveAuthResult._(
-        status: DriveAuthStatus.error,
-        message: message,
-        isPopupBlocked: isPopupBlocked,
-      );
+  }) => DriveAuthResult._(
+    status: DriveAuthStatus.error,
+    message: message,
+    isPopupBlocked: isPopupBlocked,
+  );
 
   bool get isConnected => status == DriveAuthStatus.connected;
 }
@@ -54,7 +50,7 @@ enum DriveAuthStatus { connected, notConnected, error }
 
 class DriveAuthCoordinator {
   DriveAuthCoordinator({GoogleAuthService? googleAuthService})
-      : _googleAuthService = googleAuthService ?? GoogleAuthService.instance;
+    : _googleAuthService = googleAuthService ?? GoogleAuthService.instance;
 
   static DriveAuthCoordinator? _instance;
 
@@ -83,7 +79,9 @@ class DriveAuthCoordinator {
 
   static const Duration _driveValidationCache = Duration(minutes: 10);
   static const Duration _silentRestoreBackoff = Duration(minutes: 10);
-  static const List<String> _defaultDriveScopes = [drive.DriveApi.driveFileScope];
+  static const List<String> _defaultDriveScopes = [
+    drive.DriveApi.driveFileScope,
+  ];
 
   bool get isSignedIn => _googleAuthService.isSignedIn;
   String? get currentEmail => _googleAuthService.currentEmail;
@@ -93,7 +91,8 @@ class DriveAuthCoordinator {
     if (_state != DriveAuthState.authenticated) return false;
     if (!_validatedDriveApi) return false;
     final expiry = _lastDriveValidationAt;
-    return expiry != null && DateTime.now().difference(expiry) < _driveValidationCache;
+    return expiry != null &&
+        DateTime.now().difference(expiry) < _driveValidationCache;
   }
 
   Future<GoogleSignInAccount?> signIn() async {
@@ -103,8 +102,10 @@ class DriveAuthCoordinator {
       _resetValidation();
       _setState(DriveAuthState.unauthenticated);
     } else {
-      _setState(DriveAuthState.unauthenticated,
-          'Inicio de sesión de Google cancelado o fallido.');
+      _setState(
+        DriveAuthState.unauthenticated,
+        'Inicio de sesión de Google cancelado o fallido.',
+      );
     }
     return account;
   }
@@ -142,6 +143,21 @@ class DriveAuthCoordinator {
       requiredScopes: requiredScopes,
     ).whenComplete(() => _ensureFuture = null);
     return _ensureFuture!;
+  }
+
+  Future<DriveAuthResult> ensureDriveAuthenticatedOnce({
+    bool interactive = false,
+    List<String>? requiredScopes,
+  }) async {
+    final scopes = _resolveScopes(requiredScopes);
+    if (isDriveReady && await _googleAuthService.canAccessScopes(scopes)) {
+      return DriveAuthResult.connected(email: currentEmail!);
+    }
+
+    return ensureDriveAuthenticated(
+      interactive: interactive,
+      requiredScopes: scopes,
+    );
   }
 
   List<String> _resolveScopes(List<String>? requiredScopes) {
@@ -185,6 +201,17 @@ class DriveAuthCoordinator {
             );
           }
         }
+      }
+
+      final currentUser = _googleAuthService.currentUser;
+      if (currentUser == null) {
+        _setState(
+          DriveAuthState.unauthenticated,
+          'No hay sesión de Google activa para Drive.',
+        );
+        return DriveAuthResult.notConnected(
+          message: 'No hay sesión de Google activa para Drive.',
+        );
       }
 
       final hasScopes = await _googleAuthService.canAccessScopes(scopes);
@@ -242,15 +269,19 @@ class DriveAuthCoordinator {
       _lastDriveValidationAt = DateTime.now();
       return DriveAuthResult.connected(email: currentEmail!);
     } catch (e, st) {
-      debugPrint('drive_auth_coordinator: error en autenticación Drive $e\n$st');
+      debugPrint(
+        'drive_auth_coordinator: error en autenticación Drive $e\n$st',
+      );
       _setState(DriveAuthState.failed, e.toString());
       final errorText = e.toString();
-      final isPopupBlocked = errorText.contains('popup') ||
+      final isPopupBlocked =
+          errorText.contains('popup') ||
           errorText.contains('blocked') ||
           errorText.contains('Blocked');
 
       // Detectar problemas comunes en web relacionados con GSI / FedCM.
-      final isFedCmDisabled = errorText.contains('FedCM') ||
+      final isFedCmDisabled =
+          errorText.contains('FedCM') ||
           errorText.contains('Error retrieving a token') ||
           errorText.contains('NetworkError');
 
@@ -301,7 +332,9 @@ class DriveAuthCoordinator {
       requiredScopes: scopes,
     );
     if (token == null || token.isEmpty) {
-      throw StateError('Drive accessToken inválido. Reautenticación requerida.');
+      throw StateError(
+        'Drive accessToken inválido. Reautenticación requerida.',
+      );
     }
 
     final client = _AuthClient({'Authorization': 'Bearer $token'});

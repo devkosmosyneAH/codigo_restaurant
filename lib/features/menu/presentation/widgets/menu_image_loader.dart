@@ -13,7 +13,7 @@ List<String> buildDriveImageCandidates(String? value) {
   final candidates = <String>{};
 
   if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
-    final fixedUrl = _fixGoogleDriveUrl(normalized);
+    final fixedUrl = normalizeDriveImageUrl(normalized);
     candidates.add(fixedUrl);
 
     final uri = Uri.tryParse(fixedUrl);
@@ -37,22 +37,37 @@ List<String> buildDriveImageCandidates(String? value) {
   return candidates.toList(growable: false);
 }
 
-String _fixGoogleDriveUrl(String url) {
-  if (url.isEmpty) return url;
+String normalizeDriveImageUrl(String url) {
+  final trimmed = url.trim();
+  if (trimmed.isEmpty) return trimmed;
 
-  if (url.contains('lh3.googleusercontent.com/d/')) {
-    return url;
+  final lower = trimmed.toLowerCase();
+  if (lower.contains('lh3.googleusercontent.com/d/')) {
+    return trimmed;
+  }
+
+  if (lower.contains('drive.google.com/file/d/') ||
+      lower.contains('drive.google.com/open?id=') ||
+      lower.contains('drive.google.com/uc?')) {
+    final uri = Uri.tryParse(trimmed);
+    if (uri != null) {
+      final fileId = _extractDriveFileIdFromUri(uri);
+      if (fileId != null) {
+        final publicUrl = 'https://drive.google.com/uc?export=view&id=$fileId';
+        return publicUrl;
+      }
+    }
   }
 
   final regExp = RegExp(r'(?:id=|/d/|/files/)([a-zA-Z0-9_-]+)');
-  final match = regExp.firstMatch(url);
+  final match = regExp.firstMatch(trimmed);
 
   if (match != null && match.groupCount > 0) {
     final fileId = match.group(1)!;
-    return 'https://lh3.googleusercontent.com/d/$fileId';
+    return 'https://drive.google.com/uc?export=view&id=$fileId';
   }
 
-  return url;
+  return trimmed;
 }
 
 String? _extractDriveFileId(String value) {
@@ -201,7 +216,7 @@ class _MenuImageLoaderState extends State<MenuImageLoader> {
       final candidateUrls = buildDriveImageCandidates(raw);
       final urls = candidateUrls.isNotEmpty ? candidateUrls : [raw];
       for (final candidateUrl in urls) {
-        final fixedUrl = _fixGoogleDriveUrl(candidateUrl);
+        final fixedUrl = normalizeDriveImageUrl(candidateUrl);
         if (kIsWeb) {
           candidates.add(
             _ImageCandidate(

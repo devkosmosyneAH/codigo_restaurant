@@ -225,8 +225,12 @@ class GoogleAuthService {
   ///
   /// Esta llamada es la única que debe ejecutarse desde el arranque del app.
   Future<GoogleSignInAccount?> restoreSession() async {
-    // Siempre delegar a signInSilently() para que el caller pueda decidir
-    // cuándo intentar restaurar (se permiten reintentos controlados).
+    if (_restoreFuture != null) {
+      debugPrint(
+        'google_auth.restoreSession: reutilizando restoreFuture en progreso',
+      );
+      return await _restoreFuture;
+    }
     return await signInSilently();
   }
 
