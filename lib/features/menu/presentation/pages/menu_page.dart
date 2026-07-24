@@ -46,9 +46,13 @@ class _MenuPageState extends ConsumerState<MenuPage>
   }
 
   void _syncTabController(int categoriaCount) {
-    // Incluye pestaña "Todos" al inicio
+    // Incluye pestaña "Todos" al inicio.
     final totalTabs = categoriaCount + 1;
-    if (_tabController == null || _tabCount != totalTabs) {
+    final needsRebuild = _tabController == null ||
+        _tabCount != totalTabs ||
+        _tabController!.length != totalTabs;
+
+    if (needsRebuild) {
       _tabController?.dispose();
       _tabController = TabController(
         length: totalTabs,
@@ -78,6 +82,13 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
         final cat = state.categorias[categoryIndex];
         notifier.seleccionarCategoria(cat.id);
+      });
+    }
+
+    if (_tabController != null && _tabController!.index >= totalTabs) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _tabController == null) return;
+        _tabController!.animateTo(0);
       });
     }
   }
@@ -193,7 +204,8 @@ class _MenuPageState extends ConsumerState<MenuPage>
         .where((p) => p.id == productoId)
         .firstOrNull;
     final driveFileId = producto?.driveFileId;
-    final restaurantId = producto?.restaurantId ?? sl<TenantContext>().restaurantId;
+    final restaurantId =
+        producto?.restaurantId ?? sl<TenantContext>().restaurantId;
 
     final confirm = await showDialog<bool>(
       context: context,

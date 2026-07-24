@@ -112,7 +112,9 @@ class MenuRealtimeDatabaseService {
               )
               .timeout(_requestTimeout),
         _HttpMethod.delete =>
-          await _httpClient.delete(uri).timeout(_requestTimeout),
+          await _httpClient
+              .delete(uri, headers: _jsonHeaders)
+              .timeout(_requestTimeout),
       };
 
       final ok = response.statusCode >= 200 && response.statusCode < 300;

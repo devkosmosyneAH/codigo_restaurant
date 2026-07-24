@@ -76,7 +76,6 @@ class MenuNotifier extends StateNotifier<MenuState> {
   final UpdateVariante _updateVariante;
   final DeleteVariante _deleteVariante;
   final Future<void> Function(String reason)? _requestCloudSync;
-  Future<void>? _loadMenuInFlight;
 
   MenuNotifier({
     required GetCategorias getCategorias,
@@ -130,16 +129,7 @@ class MenuNotifier extends StateNotifier<MenuState> {
   // ── Carga inicial ─────────────────────────────────────────────
 
   Future<void> loadMenu([String? restaurantId, bool silent = false]) async {
-    final inFlight = _loadMenuInFlight;
-    if (inFlight != null) {
-      return inFlight;
-    }
-
-    final loadFuture = _loadMenuInternal(restaurantId, silent);
-    _loadMenuInFlight = loadFuture.whenComplete(() {
-      _loadMenuInFlight = null;
-    });
-    return _loadMenuInFlight!;
+    await _loadMenuInternal(restaurantId, silent);
   }
 
   Future<void> _loadMenuInternal(String? restaurantId, bool silent) async {
@@ -272,11 +262,22 @@ class MenuNotifier extends StateNotifier<MenuState> {
   }
 
   Future<bool> eliminarProducto(String id) async {
-    state = state.copyWith(clearError: true);
+    final productosPrevios = List<Producto>.from(state.productos);
+    final categoriasPrevias = List<Categoria>.from(state.categorias);
+
+    state = state.copyWith(
+      clearError: true,
+      productos: state.productos.where((p) => p.id != id).toList(),
+    );
+
     final result = await _deleteProducto(id);
     return result.fold(
       (failure) {
-        state = state.copyWith(errorMessage: failure.message);
+        state = state.copyWith(
+          productos: productosPrevios,
+          categorias: categoriasPrevias,
+          errorMessage: failure.message,
+        );
         return false;
       },
       (_) async {
