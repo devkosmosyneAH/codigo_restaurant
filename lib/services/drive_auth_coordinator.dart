@@ -248,6 +248,20 @@ class DriveAuthCoordinator {
       final isPopupBlocked = errorText.contains('popup') ||
           errorText.contains('blocked') ||
           errorText.contains('Blocked');
+
+      // Detectar problemas comunes en web relacionados con GSI / FedCM.
+      final isFedCmDisabled = errorText.contains('FedCM') ||
+          errorText.contains('Error retrieving a token') ||
+          errorText.contains('NetworkError');
+
+      if (isFedCmDisabled) {
+        return DriveAuthResult.error(
+          message:
+              'No se pudo completar la autenticación web. Parece que el inicio de sesión federado (FedCM / Google Identity) está deshabilitado por el navegador. Pide al usuario habilitar el inicio de sesión en el icono a la izquierda de la barra de URL o en la configuración del sitio, o usar el botón "Conectar Drive" para reintentar.',
+          isPopupBlocked: isPopupBlocked,
+        );
+      }
+
       return DriveAuthResult.error(
         message: 'Error al autenticar con Google Drive: $e',
         isPopupBlocked: isPopupBlocked,

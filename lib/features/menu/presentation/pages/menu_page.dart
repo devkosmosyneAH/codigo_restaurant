@@ -11,6 +11,7 @@ import 'package:restaurant_app/features/menu/presentation/providers/drive_connec
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/categoria_form_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/menu_sync_diagnostics_dialog.dart';
+import 'package:restaurant_app/features/menu/presentation/widgets/drive_help_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_card.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_form_dialog.dart';
 import 'package:restaurant_app/widgets/skeleton_loader.dart';
@@ -628,6 +629,16 @@ class _MenuPageState extends ConsumerState<MenuPage>
             ),
             onPressed: () => _connectDriveFromBanner(ref),
             child: const Text('Conectar', style: TextStyle(fontSize: 12)),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              minimumSize: Size.zero,
+              foregroundColor: colorScheme.onErrorContainer,
+            ),
+            onPressed: () => DriveHelpDialog.show(context, ref),
+            child: const Text('Ayuda', style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
