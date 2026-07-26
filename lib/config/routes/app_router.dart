@@ -144,8 +144,11 @@ class AppRouter {
       debugPrint(
         "ROUTER redirect:"
         " from=${state.matchedLocation}"
-        " auth=${auth.isAuthenticated}"
-        " activation=${activation.canAccessApp}",
+        " isAuthenticated=${auth.isAuthenticated}"
+        " isSessionRestoring=${auth.isSessionRestoring}"
+        " canAccessApp=${activation.canAccessApp}"
+        " isInitialized=${activation.isInitialized}"
+        " isLoading=${activation.isLoading}",
       );
       final isLoginRoute = state.matchedLocation == login;
       final loc = state.matchedLocation;

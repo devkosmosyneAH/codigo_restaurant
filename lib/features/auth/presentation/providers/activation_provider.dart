@@ -20,19 +20,21 @@ class ActivationChangeNotifier extends ChangeNotifier {
 
   Future<void> loadStatus({DateTime? now}) async {
     _isLoading = true;
-    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint("ACTIVATION notifyListeners() - loadStatus (isLoading=true)");
     debugPrint(StackTrace.current.toString());
     notifyListeners();
 
     _status = await _service.getStatus(now: now);
     _hasLoaded = true;
     _isLoading = false;
+    debugPrint("ACTIVATION notifyListeners() - loadStatus (isLoading=false)");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
   }
 
   Future<String?> activate(String code, {DateTime? now}) async {
     _isLoading = true;
-    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint("ACTIVATION notifyListeners() - activate (isLoading=true)");
     debugPrint(StackTrace.current.toString());
     notifyListeners();
 
@@ -40,7 +42,7 @@ class ActivationChangeNotifier extends ChangeNotifier {
     _status = await _service.getStatus(now: now);
     _hasLoaded = true;
     _isLoading = false;
-    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint("ACTIVATION notifyListeners() - activate (isLoading=false)");
     debugPrint(StackTrace.current.toString());
     notifyListeners();
     return error;
@@ -48,7 +50,7 @@ class ActivationChangeNotifier extends ChangeNotifier {
 
   Future<void> reset() async {
     _isLoading = true;
-    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint("ACTIVATION notifyListeners() - reset (isLoading=true)");
     debugPrint(StackTrace.current.toString());
     notifyListeners();
 
@@ -56,7 +58,7 @@ class ActivationChangeNotifier extends ChangeNotifier {
     _status = await _service.getStatus();
     _hasLoaded = true;
     _isLoading = false;
-    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint("ACTIVATION notifyListeners() - reset (isLoading=false)");
     debugPrint(StackTrace.current.toString());
     notifyListeners();
   }
