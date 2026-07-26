@@ -215,7 +215,9 @@ class _MenuPageState extends ConsumerState<MenuPage>
   Future<void> _eliminarProducto(String productoId, String nombre) async {
     try {
       debugPrint('MENU_DELETE [1] Entrando al método de eliminación');
-      debugPrint('MENU_DELETE [2] Producto recibido id=$productoId nombre=$nombre');
+      debugPrint(
+        'MENU_DELETE [2] Producto recibido id=$productoId nombre=$nombre',
+      );
 
       final producto = ref
           .read(menuProvider)
@@ -234,16 +236,24 @@ class _MenuPageState extends ConsumerState<MenuPage>
       debugPrint('SHOW_DIALOG -> antes');
       late bool? confirm;
       try {
+        // CAUSA RAÍZ CORREGIDA: Usar el Navigator root en lugar del contexto de MenuPage.
+        // En Flutter Web, showDialog() causa reconstrucciones que pueden destruir el State
+        // mientras el diálogo está abierto. Usar Navigator.of(rootContext) garantiza que
+        // el contexto no será invalidado por reconstrucciones de MenuPage.
+        final navigationContext = Navigator.of(context);
         confirm = await showDialog<bool>(
           context: context,
+          useRootNavigator: true,
           builder: (_) => AlertDialog(
             title: const Text('Eliminar Producto'),
             content: Text('¿Eliminar "$nombre" del menú?'),
             actions: [
               TextButton(
                 onPressed: () {
-                  debugPrint('NAVIGATION -> menu_page.dart: eliminarProducto -> dialog cancelar -> pop(false)');
-                  Navigator.of(context).pop(false);
+                  debugPrint(
+                    'NAVIGATION -> menu_page.dart: eliminarProducto -> dialog cancelar -> pop(false)',
+                  );
+                  navigationContext.pop(false);
                 },
                 child: const Text('Cancelar'),
               ),
@@ -252,8 +262,10 @@ class _MenuPageState extends ConsumerState<MenuPage>
                   backgroundColor: Theme.of(context).colorScheme.error,
                 ),
                 onPressed: () {
-                  debugPrint('NAVIGATION -> menu_page.dart: eliminarProducto -> dialog eliminar -> pop(true)');
-                  Navigator.of(context).pop(true);
+                  debugPrint(
+                    'NAVIGATION -> menu_page.dart: eliminarProducto -> dialog eliminar -> pop(true)',
+                  );
+                  navigationContext.pop(true);
                 },
                 child: const Text('Eliminar'),
               ),
@@ -277,7 +289,9 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
       if (driveFileId != null && driveFileId.isNotEmpty) {
         try {
-          debugPrint('MENU_DELETE [7] Encolando eliminación de imagen en Drive');
+          debugPrint(
+            'MENU_DELETE [7] Encolando eliminación de imagen en Drive',
+          );
           final driveQueue = sl<DriveImageSyncQueueService>();
           await driveQueue.enqueueDeleteImage(
             restaurantId: restaurantId,
