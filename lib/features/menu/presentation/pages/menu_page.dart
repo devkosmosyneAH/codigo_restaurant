@@ -6,7 +6,6 @@ import 'package:restaurant_app/core/config/app_environment.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
-import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/drive_connection_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/categoria_form_dialog.dart';
@@ -96,6 +95,7 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
   @override
   void dispose() {
+    debugPrint("MENU_PAGE DISPOSE");
     _tabController?.dispose();
     super.dispose();
   }

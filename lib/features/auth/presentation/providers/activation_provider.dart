@@ -20,6 +20,8 @@ class ActivationChangeNotifier extends ChangeNotifier {
 
   Future<void> loadStatus({DateTime? now}) async {
     _isLoading = true;
+    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
 
     _status = await _service.getStatus(now: now);
@@ -30,24 +32,32 @@ class ActivationChangeNotifier extends ChangeNotifier {
 
   Future<String?> activate(String code, {DateTime? now}) async {
     _isLoading = true;
+    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
 
     final error = await _service.activateWithCode(code, now: now);
     _status = await _service.getStatus(now: now);
     _hasLoaded = true;
     _isLoading = false;
+    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
     return error;
   }
 
   Future<void> reset() async {
     _isLoading = true;
+    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
 
     await _service.clearActivation();
     _status = await _service.getStatus();
     _hasLoaded = true;
     _isLoading = false;
+    debugPrint("ACTIVATION notifyListeners()");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
   }
 }

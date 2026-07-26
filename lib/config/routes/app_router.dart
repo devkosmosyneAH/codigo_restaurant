@@ -141,6 +141,12 @@ class AppRouter {
       final auth = sl<AuthChangeNotifier>();
       final activation = sl<ActivationChangeNotifier>();
       final isLoggedIn = auth.isAuthenticated;
+      debugPrint(
+        "ROUTER redirect:"
+        " from=${state.matchedLocation}"
+        " auth=${auth.isAuthenticated}"
+        " activation=${activation.canAccessApp}",
+      );
       final isLoginRoute = state.matchedLocation == login;
       final loc = state.matchedLocation;
       final isAuthLoading = auth.isSessionRestoring;

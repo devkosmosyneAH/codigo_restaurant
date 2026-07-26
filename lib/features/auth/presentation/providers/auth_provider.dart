@@ -104,6 +104,8 @@ class AuthChangeNotifier extends ChangeNotifier {
       rol: usuario.rol.value,
     );
     if (previousUser != _usuario) {
+      debugPrint("AUTH notifyListeners()");
+      debugPrint(StackTrace.current.toString());
       notifyListeners();
     }
     return null;
@@ -152,6 +154,8 @@ class AuthChangeNotifier extends ChangeNotifier {
         await sl<DriveMenuConnectionService>().restoreSessionSilently();
       }
       if (previousUser != _usuario) {
+        debugPrint("AUTH notifyListeners()");
+        debugPrint(StackTrace.current.toString());
         notifyListeners();
       }
     } catch (_) {
@@ -165,6 +169,8 @@ class AuthChangeNotifier extends ChangeNotifier {
   void _setSessionRestoring(bool value) {
     if (_isSessionRestoring == value) return;
     _isSessionRestoring = value;
+    debugPrint("AUTH notifyListeners()");
+    debugPrint(StackTrace.current.toString());
     notifyListeners();
   }
 
@@ -182,6 +188,8 @@ class AuthChangeNotifier extends ChangeNotifier {
     }
     await sl<FirebaseAuthService>().signOut();
     if (hadUser) {
+      debugPrint("AUTH notifyListeners()");
+      debugPrint(StackTrace.current.toString());
       notifyListeners();
     }
   }
