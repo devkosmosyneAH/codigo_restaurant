@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/usuarios/domain/entities/usuario.dart';
 
 /// Contrato del repositorio de Usuarios (capa de dominio).

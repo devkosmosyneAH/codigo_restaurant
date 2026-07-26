@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 import 'package:restaurant_app/features/usuarios/domain/entities/usuario.dart';
 
 /// Modelo de datos para la tabla [usuarios] en SQLite.

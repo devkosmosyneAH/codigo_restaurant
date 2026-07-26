@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/mesas/domain/entities/mesa.dart';
 
 /// Contrato del repositorio de Mesas (capa de dominio).

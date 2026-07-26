@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/pedidos/domain/entities/pedido.dart';
 import 'package:restaurant_app/features/pedidos/domain/entities/pedido_item.dart';
 

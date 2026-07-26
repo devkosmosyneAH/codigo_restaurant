@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 import 'package:restaurant_app/features/reservaciones/domain/entities/reserva.dart';
 
 /// Modelo de datos: Reserva.

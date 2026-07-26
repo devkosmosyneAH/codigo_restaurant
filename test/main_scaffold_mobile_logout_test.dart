@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:restaurant_app/app_startup/app_startup.dart';
+import 'package:restaurant_app/Presentation/app_startup/app_startup.dart';
 import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/features/home/presentation/widgets/main_scaffold.dart';
 

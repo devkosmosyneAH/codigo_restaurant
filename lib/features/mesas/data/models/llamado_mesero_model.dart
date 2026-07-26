@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 import 'package:restaurant_app/features/mesas/domain/entities/llamado_mesero.dart';
 
 /// Modelo de datos: Llamado a mesero.

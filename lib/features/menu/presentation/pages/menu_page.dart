@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:restaurant_app/Presentation/core/config/app_environment.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
-import 'package:restaurant_app/core/config/app_environment.dart';
-import 'package:restaurant_app/core/di/injection_container.dart';
-import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/drive_connection_provider.dart';
 import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
@@ -13,7 +13,7 @@ import 'package:restaurant_app/features/menu/presentation/widgets/menu_sync_diag
 import 'package:restaurant_app/features/menu/presentation/widgets/drive_help_dialog.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_card.dart';
 import 'package:restaurant_app/features/menu/presentation/widgets/producto_form_dialog.dart';
-import 'package:restaurant_app/widgets/skeleton_loader.dart';
+import 'package:restaurant_app/widgets/widgets/skeleton_loader.dart';
 
 /// Página principal del Menú.
 ///
@@ -146,21 +146,21 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Eliminar Categoría'),
         content: Text(
           '¿Eliminar "${cat.nombre}"? Los productos de esta categoría quedarán sin categoría.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancelar'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
             ),
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Eliminar'),
           ),
         ],
@@ -236,15 +236,9 @@ class _MenuPageState extends ConsumerState<MenuPage>
       debugPrint('SHOW_DIALOG -> antes');
       late bool? confirm;
       try {
-        // CAUSA RAÍZ CORREGIDA: Usar el Navigator root en lugar del contexto de MenuPage.
-        // En Flutter Web, showDialog() causa reconstrucciones que pueden destruir el State
-        // mientras el diálogo está abierto. Usar Navigator.of(rootContext) garantiza que
-        // el contexto no será invalidado por reconstrucciones de MenuPage.
-        final navigationContext = Navigator.of(context);
         confirm = await showDialog<bool>(
           context: context,
-          useRootNavigator: true,
-          builder: (_) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: const Text('Eliminar Producto'),
             content: Text('¿Eliminar "$nombre" del menú?'),
             actions: [
@@ -253,19 +247,19 @@ class _MenuPageState extends ConsumerState<MenuPage>
                   debugPrint(
                     'NAVIGATION -> menu_page.dart: eliminarProducto -> dialog cancelar -> pop(false)',
                   );
-                  navigationContext.pop(false);
+                  Navigator.of(dialogContext).pop(false);
                 },
                 child: const Text('Cancelar'),
               ),
               FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.error,
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
                 ),
                 onPressed: () {
                   debugPrint(
                     'NAVIGATION -> menu_page.dart: eliminarProducto -> dialog eliminar -> pop(true)',
                   );
-                  navigationContext.pop(true);
+                  Navigator.of(dialogContext).pop(true);
                 },
                 child: const Text('Eliminar'),
               ),

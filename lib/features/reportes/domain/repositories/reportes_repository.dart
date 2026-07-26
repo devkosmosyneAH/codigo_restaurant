@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/reportes/domain/entities/reporte_mesero.dart';
 import 'package:restaurant_app/features/reportes/domain/entities/reporte_metodo_pago.dart';
 import 'package:restaurant_app/features/reportes/domain/entities/reporte_producto_vendido.dart';

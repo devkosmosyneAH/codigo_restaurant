@@ -5,14 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/firebase/firebase_initializer.dart';
+import 'package:restaurant_app/Presentation/core/sync/hybrid_sync_orchestrator.dart';
+import 'package:restaurant_app/Presentation/core/theme/app_theme.dart';
 import 'package:restaurant_app/app_startup/app_startup.dart';
 import 'package:restaurant_app/config/routes/app_router.dart';
-import 'package:restaurant_app/core/di/injection_container.dart';
-import 'package:restaurant_app/core/firebase/firebase_initializer.dart';
-import 'package:restaurant_app/core/theme/app_theme.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
-import 'package:restaurant_app/core/sync/hybrid_sync_orchestrator.dart';
 
 /// Punto de entrada de la aplicación RestaurantApp.
 ///

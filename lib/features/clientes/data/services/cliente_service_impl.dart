@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:restaurant_app/core/errors/exceptions.dart';
 import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/clientes/domain/entities/cliente.dart';

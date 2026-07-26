@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/core/utils/usecase.dart';
 import 'package:restaurant_app/features/cotizaciones/domain/entities/cotizacion.dart';
 import 'package:restaurant_app/features/cotizaciones/domain/repositories/cotizacion_repository.dart';

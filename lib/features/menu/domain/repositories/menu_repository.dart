@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/menu/domain/entities/categoria.dart';
 import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
 import 'package:restaurant_app/features/menu/domain/entities/variante.dart';

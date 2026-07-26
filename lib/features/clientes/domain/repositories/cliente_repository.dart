@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/clientes/domain/entities/cliente.dart';
 
 /// Contrato del repositorio de Clientes (dominio).

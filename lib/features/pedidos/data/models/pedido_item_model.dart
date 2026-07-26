@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 import 'package:restaurant_app/features/pedidos/domain/entities/pedido_item.dart';
 
 /// Modelo de datos: PedidoItem.

@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/features/pagina_publica/domain/entities/public_config.dart';
 import 'package:restaurant_app/features/pagina_publica/domain/repositories/public_config_repository.dart';
 

@@ -1,4 +1,4 @@
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/core/utils/usecase.dart';
 import 'package:restaurant_app/features/reservaciones/domain/entities/reserva.dart';
 import 'package:restaurant_app/features/reservaciones/domain/repositories/reserva_repository.dart';
