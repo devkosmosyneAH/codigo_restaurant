@@ -1,4 +1,4 @@
-import 'package:restaurant_app/Presentation/modelos/Servicio/servicio.dart';
+import 'package:restaurant_app/Presentation/Models/Servicio/servicio.dart';
 import 'package:restaurant_app/services/database_service.dart';
 import 'package:sqflite/sqflite.dart';
 
