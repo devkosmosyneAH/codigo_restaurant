@@ -34,6 +34,7 @@ class _MenuPageState extends ConsumerState<MenuPage>
   @override
   void initState() {
     super.initState();
+    debugPrint('🟢 MENU_PAGE INIT');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(menuProvider.notifier).loadMenu();
       // Verificar sesión Drive silenciosamente al entrar al panel de menú.
@@ -42,6 +43,12 @@ class _MenuPageState extends ConsumerState<MenuPage>
         ref.read(driveConnectionProvider.notifier).checkSilently();
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('🟡 MENU_PAGE didChangeDependencies');
   }
 
   void _syncTabController(int categoriaCount) {
@@ -94,8 +101,15 @@ class _MenuPageState extends ConsumerState<MenuPage>
   }
 
   @override
+  void deactivate() {
+    debugPrint('🟠 MENU_PAGE DEACTIVATE');
+    super.deactivate();
+  }
+
+  @override
   void dispose() {
-    debugPrint("MENU_PAGE DISPOSE");
+    debugPrint('💀 MENU_PAGE DISPOSE');
+    debugPrint(StackTrace.current.toString());
     _tabController?.dispose();
     super.dispose();
   }
@@ -217,27 +231,44 @@ class _MenuPageState extends ConsumerState<MenuPage>
       );
 
       debugPrint('MENU_DELETE [4] Abriendo confirmación de eliminación');
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('Eliminar Producto'),
-          content: Text('¿Eliminar "$nombre" del menú?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
+      debugPrint('SHOW_DIALOG -> antes');
+      late bool? confirm;
+      try {
+        confirm = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Eliminar Producto'),
+            content: Text('¿Eliminar "$nombre" del menú?'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  debugPrint('NAVIGATION -> menu_page.dart: eliminarProducto -> dialog cancelar -> pop(false)');
+                  Navigator.of(context).pop(false);
+                },
+                child: const Text('Cancelar'),
               ),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Eliminar'),
-            ),
-          ],
-        ),
-      );
-      debugPrint('MENU_DELETE [5] Confirmación result=$confirm');
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                ),
+                onPressed: () {
+                  debugPrint('NAVIGATION -> menu_page.dart: eliminarProducto -> dialog eliminar -> pop(true)');
+                  Navigator.of(context).pop(true);
+                },
+                child: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        );
+        debugPrint('SHOW_DIALOG -> después');
+        debugPrint('MENU_DELETE [5] Confirmación result=$confirm');
+      } catch (e, s) {
+        debugPrint('SHOW_DIALOG ERROR');
+        debugPrint(e.toString());
+        debugPrint(StackTrace.current.toString());
+        debugPrint(s.toString());
+        rethrow;
+      }
 
       if (confirm != true || !mounted) {
         debugPrint('MENU_DELETE [6] Eliminación cancelada o widget no montado');
@@ -278,6 +309,7 @@ class _MenuPageState extends ConsumerState<MenuPage>
     } catch (e, s) {
       debugPrint('MENU_DELETE ERROR [page]');
       debugPrint(e.toString());
+      debugPrint(StackTrace.current.toString());
       debugPrint(s.toString());
       rethrow;
     }
@@ -311,6 +343,7 @@ class _MenuPageState extends ConsumerState<MenuPage>
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('🔵 MENU_PAGE BUILD');
     final state = ref.watch(menuProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
