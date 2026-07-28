@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/features/mesas/domain/entities/mesa.dart';
-import 'package:restaurant_app/features/mesas/presentation/widgets/mesa_card.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/entities/mesas/mesa.dart';
+import 'package:restaurant_app/Presentation/widgets/mesas/mesa_card.dart';
 
 void main() {
   testWidgets('MesaCard does not overflow on compact mobile sizes', (

@@ -1,12 +1,12 @@
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/utils/typedefs.dart';
-import 'package:restaurant_app/features/menu/domain/entities/categoria.dart';
-import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
-import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
-import 'package:restaurant_app/features/menu/domain/repositories/menu_repository.dart';
-import 'package:restaurant_app/features/menu/domain/usecases/menu_usecases.dart';
-import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/domain/menu/repositories/menu_repository.dart';
+import 'package:restaurant_app/Presentation/domain/menu/usecases/menu_usecases.dart';
+import 'package:restaurant_app/Presentation/entities/menu/categoria.dart';
+import 'package:restaurant_app/Presentation/entities/menu/producto.dart';
+import 'package:restaurant_app/Presentation/entities/menu/variante.dart';
+import 'package:restaurant_app/Presentation/providers/menu/menu_provider.dart';
 
 void main() {
   group('Menu externo rendimiento de carga', () {

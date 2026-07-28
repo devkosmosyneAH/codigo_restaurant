@@ -1,9 +1,8 @@
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 import 'package:restaurant_app/Presentation/entities/usuarios/usuario.dart';
 
-/// Modelo de datos: Usuario.
-///
-/// Serialización SQLite para la entidad [Usuario].
+
+/// Modelo de datos para la tabla [usuarios] en SQLite.
 class UsuarioModel extends Usuario {
   const UsuarioModel({
     required super.id,
@@ -25,7 +24,7 @@ class UsuarioModel extends Usuario {
       email: map['email'] as String?,
       pin: map['pin'] as String?,
       rol: RolUsuario.fromString(map['rol'] as String),
-      activo: (map['activo'] as int?) == 1,
+      activo: (map['activo'] as int? ?? 1) == 1,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
     );
@@ -45,17 +44,17 @@ class UsuarioModel extends Usuario {
     };
   }
 
-  factory UsuarioModel.fromEntity(Usuario entity) {
+  factory UsuarioModel.fromEntity(Usuario usuario) {
     return UsuarioModel(
-      id: entity.id,
-      restaurantId: entity.restaurantId,
-      nombre: entity.nombre,
-      email: entity.email,
-      pin: entity.pin,
-      rol: entity.rol,
-      activo: entity.activo,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
+      id: usuario.id,
+      restaurantId: usuario.restaurantId,
+      nombre: usuario.nombre,
+      email: usuario.email,
+      pin: usuario.pin,
+      rol: usuario.rol,
+      activo: usuario.activo,
+      createdAt: usuario.createdAt,
+      updatedAt: usuario.updatedAt,
     );
   }
 }

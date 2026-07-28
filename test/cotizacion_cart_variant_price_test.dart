@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/features/cotizaciones/presentation/providers/cotizacion_cart_provider.dart';
-import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
-import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
+import 'package:restaurant_app/Presentation/entities/menu/producto.dart';
+import 'package:restaurant_app/Presentation/entities/menu/variante.dart';
+import 'package:restaurant_app/Presentation/providers/cotizaciones/cotizacion_cart_provider.dart';
 
 void main() {
   group('CotizacionCartNotifier precio referencial', () {

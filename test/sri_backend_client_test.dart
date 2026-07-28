@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/services/facturacion/sri_backend_client.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/sri_backend_client.dart';
 
 void main() {
   group('SriBackendMockClient', () {

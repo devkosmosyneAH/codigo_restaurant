@@ -1,23 +1,22 @@
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:restaurant_app/Presentation/Models/mesas/mesa_model.dart';
+import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/errors/failures.dart';
+import 'package:restaurant_app/Presentation/core/sync/sync_cloud_service.dart';
+import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
+import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
+import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/Presentation/data/mesas/mesa_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/domain/usuarios/repositories/usuario_repository.dart';
+import 'package:restaurant_app/Presentation/domain/usuarios/usecases/usuario_usecases.dart';
+import 'package:restaurant_app/Presentation/entities/usuarios/usuario.dart';
+import 'package:restaurant_app/Presentation/providers/sincronizacion/sync_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import 'package:restaurant_app/core/database/database_helper.dart';
-import 'package:restaurant_app/core/di/injection_container.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/core/errors/failures.dart';
-import 'package:restaurant_app/core/sync/sync_cloud_service.dart';
-import 'package:restaurant_app/core/sync/sync_manager.dart';
-import 'package:restaurant_app/core/sync/sync_record.dart';
-import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
-import 'package:restaurant_app/features/mesas/data/datasources/mesa_local_datasource_impl.dart';
-import 'package:restaurant_app/features/mesas/data/models/mesa_model.dart';
-import 'package:restaurant_app/features/sincronizacion/presentation/providers/sync_provider.dart';
-import 'package:restaurant_app/features/usuarios/domain/entities/usuario.dart';
-import 'package:restaurant_app/features/usuarios/domain/repositories/usuario_repository.dart';
-import 'package:restaurant_app/features/usuarios/domain/usecases/usuario_usecases.dart';
 
 class _MockDatabaseHelper extends Mock implements DatabaseHelper {}
 

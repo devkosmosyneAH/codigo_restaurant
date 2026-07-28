@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/config/routes/app_router.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/config/routes/app_router.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+
 
 void main() {
   group('Menu externo seguridad de rutas', () {

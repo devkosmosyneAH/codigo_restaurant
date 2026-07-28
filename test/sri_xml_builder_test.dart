@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta_detalle.dart';
-import 'package:restaurant_app/services/facturacion/fiscal_config_service.dart';
-import 'package:restaurant_app/services/facturacion/sri_xml_builder.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta_detalle.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/fiscal_config_service.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/sri_xml_builder.dart';
 
 void main() {
   group('SriXmlBuilder', () {

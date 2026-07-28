@@ -2,10 +2,10 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:restaurant_app/Presentation/app_startup/app_startup.dart';
-import 'package:restaurant_app/core/di/injection_container.dart';
 import 'package:restaurant_app/main.dart';
 
 void main() {

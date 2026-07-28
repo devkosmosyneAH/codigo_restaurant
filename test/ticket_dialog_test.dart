@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta_detalle.dart';
-import 'package:restaurant_app/features/caja/presentation/widgets/ticket_dialog.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta_detalle.dart';
+import 'package:restaurant_app/Presentation/widgets/caja/ticket_dialog.dart';
 
 void main() {
   testWidgets('shows client order breakdown with quantity and unit price', (

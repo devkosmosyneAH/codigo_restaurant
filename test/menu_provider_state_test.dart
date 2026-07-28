@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
-import 'package:restaurant_app/features/menu/presentation/providers/menu_provider.dart';
+import 'package:restaurant_app/Presentation/entities/menu/producto.dart';
+import 'package:restaurant_app/Presentation/providers/menu/menu_provider.dart';
 
 void main() {
   test('productosDisponibles excluye productos inactivos', () {

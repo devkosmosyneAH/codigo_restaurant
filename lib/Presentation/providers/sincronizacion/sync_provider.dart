@@ -5,9 +5,7 @@ import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_cloud_service.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
-import 'package:restaurant_app/core/sync/sync_cloud_service.dart';
-import 'package:restaurant_app/core/sync/sync_manager.dart';
-import 'package:restaurant_app/core/sync/sync_record.dart';
+import 'package:restaurant_app/Presentation/services/menu/drive_image_sync_queue_service.dart';
 
 // ── Estado ─────────────────────────────────────────────────────────────────────
 

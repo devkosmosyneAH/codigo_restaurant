@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/services/session_service.dart';
+import 'package:restaurant_app/Presentation/services/session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

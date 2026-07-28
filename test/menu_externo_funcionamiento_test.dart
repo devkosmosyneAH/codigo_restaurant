@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/features/menu/domain/entities/producto.dart';
-import 'package:restaurant_app/features/menu/domain/entities/variante.dart';
-import 'package:restaurant_app/features/menu/presentation/widgets/public_producto_card.dart';
+import 'package:restaurant_app/Presentation/entities/menu/producto.dart';
+import 'package:restaurant_app/Presentation/entities/menu/variante.dart';
+import 'package:restaurant_app/Presentation/widgets/menu/public_producto_card.dart';
 
 void main() {
   group('Menu externo funcionamiento', () {

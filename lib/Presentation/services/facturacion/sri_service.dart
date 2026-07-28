@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:restaurant_app/Presentation/Models/caja/venta_detalle_model.dart';
-import 'package:restaurant_app/Presentation/Models/caja/venta_model.dart';
 import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';

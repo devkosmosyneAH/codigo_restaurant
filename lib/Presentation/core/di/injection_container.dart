@@ -16,6 +16,7 @@ import 'package:restaurant_app/Presentation/domain/mesas/repositories/llamado_re
 import 'package:restaurant_app/Presentation/domain/mesas/repositories/mesa_repository.dart';
 import 'package:restaurant_app/Presentation/domain/mesas/usecases/llamado_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/mesas/usecases/mesa_usecases.dart';
+import 'package:restaurant_app/Presentation/domain/pagina_publica/repositories/public_config_repository.dart';
 import 'package:restaurant_app/Presentation/domain/pagina_publica/usecases/public_config_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/pedidos/usecases/pedido_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/reportes/usecases/reportes_usecases.dart';
@@ -25,6 +26,7 @@ import 'package:restaurant_app/Presentation/domain/usuarios/repositories/usuario
 import 'package:restaurant_app/Presentation/domain/usuarios/usecases/usuario_usecases.dart';
 import 'package:restaurant_app/Presentation/providers/auth/activation_provider.dart';
 import 'package:restaurant_app/Presentation/services/clientes/cliente_service.dart';
+import 'package:restaurant_app/Presentation/services/clientes/cliente_service_impl.dart';
 import 'package:restaurant_app/Presentation/services/drive_auth_coordinator.dart';
 import 'package:restaurant_app/Presentation/services/drive_backup_service.dart';
 import 'package:restaurant_app/Presentation/services/facturacion/sri_service.dart';

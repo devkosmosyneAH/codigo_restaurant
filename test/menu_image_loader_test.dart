@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/features/menu/presentation/widgets/menu_image_loader.dart';
+import 'package:restaurant_app/Presentation/widgets/menu/menu_image_loader.dart';
 
 void main() {
   group('buildDriveImageCandidates', () {

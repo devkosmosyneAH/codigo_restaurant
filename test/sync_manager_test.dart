@@ -2,10 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
+import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
+import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 
-import 'package:restaurant_app/core/database/database_helper.dart';
-import 'package:restaurant_app/core/sync/sync_manager.dart';
-import 'package:restaurant_app/core/sync/sync_record.dart';
 
 class _MockDatabaseHelper extends Mock implements DatabaseHelper {}
 

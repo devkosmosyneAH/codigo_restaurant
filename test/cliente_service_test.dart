@@ -1,14 +1,13 @@
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/errors/failures.dart';
+import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/domain/clientes/repositories/cliente_repository.dart';
+import 'package:restaurant_app/Presentation/domain/clientes/usecases/cliente_usecases.dart';
+import 'package:restaurant_app/Presentation/entities/clientes/cliente.dart';
 
-import 'package:restaurant_app/core/di/injection_container.dart';
-import 'package:restaurant_app/core/errors/failures.dart';
-import 'package:restaurant_app/core/tenant/tenant_context.dart';
-import 'package:restaurant_app/core/utils/typedefs.dart';
-import 'package:restaurant_app/features/clientes/data/services/cliente_service_impl.dart';
-import 'package:restaurant_app/features/clientes/domain/entities/cliente.dart';
-import 'package:restaurant_app/features/clientes/domain/repositories/cliente_repository.dart';
-import 'package:restaurant_app/features/clientes/domain/usecases/cliente_usecases.dart';
 
 void main() {
   group('ClienteServiceImpl', () {
