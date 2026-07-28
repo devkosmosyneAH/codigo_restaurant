@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
+import 'package:restaurant_app/Presentation/services/activation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:restaurant_app/core/constants/app_constants.dart';
-import 'package:restaurant_app/services/activation_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

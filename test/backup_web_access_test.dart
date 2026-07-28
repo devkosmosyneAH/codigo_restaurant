@@ -3,9 +3,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:restaurant_app/core/database/database_helper.dart';
-import 'package:restaurant_app/services/backup_access_stub.dart' as web_backup;
-import 'package:restaurant_app/services/database_location_service.dart';
+import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
+import 'package:restaurant_app/Presentation/services/backup_access_stub.dart' as web_backup;
+import 'package:restaurant_app/Presentation/services/database_location_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 

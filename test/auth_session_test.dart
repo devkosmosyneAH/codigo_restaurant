@@ -1,10 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/Presentation/services/session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:restaurant_app/core/di/injection_container.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
-import 'package:restaurant_app/services/session_service.dart';
+
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -1,5 +1,5 @@
 import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
-import 'package:restaurant_app/services/session_service.dart';
+import 'package:restaurant_app/Presentation/services/session_service.dart';
 
 /// Fuente única de verdad para el contexto del tenant activo en tiempo de ejecución.
 ///

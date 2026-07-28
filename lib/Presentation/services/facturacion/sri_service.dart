@@ -2,17 +2,17 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:restaurant_app/Presentation/Models/caja/venta_detalle_model.dart';
+import 'package:restaurant_app/Presentation/Models/caja/venta_model.dart';
 import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
-import 'package:restaurant_app/features/caja/data/models/venta_detalle_model.dart';
-import 'package:restaurant_app/features/caja/data/models/venta_model.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta.dart';
-import 'package:restaurant_app/services/facturacion/fiscal_config_service.dart';
-import 'package:restaurant_app/services/facturacion/sri_backend_client.dart';
-import 'package:restaurant_app/services/facturacion/sri_ride_pdf_service.dart';
-import 'package:restaurant_app/services/facturacion/sri_secuencial_service.dart';
-import 'package:restaurant_app/services/facturacion/sri_xml_builder.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/sri_backend_client.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/sri_secuencial_service.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/fiscal_config_service.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/sri_ride_pdf_service.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/sri_xml_builder.dart';
 import 'package:uuid/uuid.dart';
 
 /// Estado de la configuración necesaria para facturación electrónica con SRI.

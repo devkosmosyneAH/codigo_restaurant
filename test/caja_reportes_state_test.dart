@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta.dart';
-import 'package:restaurant_app/features/caja/presentation/providers/caja_provider.dart';
-import 'package:restaurant_app/features/pedidos/domain/entities/pedido.dart';
-import 'package:restaurant_app/features/reportes/presentation/providers/reportes_provider.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta.dart';
+import 'package:restaurant_app/Presentation/entities/pedidos/pedido.dart';
+import 'package:restaurant_app/Presentation/providers/caja/caja_provider.dart';
+import 'package:restaurant_app/Presentation/providers/reportes/reportes_provider.dart';
 
 void main() {
   group('CajaState commercial summary', () {

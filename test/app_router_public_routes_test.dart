@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/config/routes/app_router.dart';
+import 'package:restaurant_app/Presentation/config/routes/app_router.dart';
 
 void main() {
   group('AppRouter public location checks', () {

@@ -2,8 +2,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
-import 'package:restaurant_app/services/Auth/auth_service.dart';
-import 'package:restaurant_app/services/session_service.dart';
+import 'package:restaurant_app/Presentation/services/Auth/auth_service.dart';
+import 'package:restaurant_app/Presentation/services/session_service.dart';
 
 /// Servicio ÚNICO para autenticación con Firebase.
 class FirebaseAuthService {

@@ -1,5 +1,5 @@
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
-import 'package:restaurant_app/features/auth/domain/entities/usuario.dart';
+import 'package:restaurant_app/Presentation/entities/usuarios/usuario.dart';
 
 /// Modelo de datos: Usuario.
 ///

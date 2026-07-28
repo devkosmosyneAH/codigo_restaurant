@@ -9,10 +9,10 @@ import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:restaurant_app/Presentation/core/firebase/firebase_initializer.dart';
 import 'package:restaurant_app/Presentation/core/sync/hybrid_sync_orchestrator.dart';
 import 'package:restaurant_app/Presentation/core/theme/app_theme.dart';
-import 'package:restaurant_app/app_startup/app_startup.dart';
-import 'package:restaurant_app/config/routes/app_router.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:restaurant_app/Presentation/app_startup/app_startup.dart';
+import 'package:restaurant_app/Presentation/config/routes/app_router.dart';
+import 'package:restaurant_app/Presentation/providers/auth/activation_provider.dart';
+import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
 
 /// Punto de entrada de la aplicación RestaurantApp.
 ///

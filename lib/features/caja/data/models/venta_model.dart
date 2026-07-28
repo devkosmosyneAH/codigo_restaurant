@@ -1,6 +1,6 @@
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta_detalle.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta_detalle.dart';
 
 /// Modelo de datos: Venta.
 ///

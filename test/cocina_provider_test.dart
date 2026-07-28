@@ -1,12 +1,12 @@
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/core/utils/typedefs.dart';
-import 'package:restaurant_app/features/cocina/presentation/providers/cocina_provider.dart';
-import 'package:restaurant_app/features/pedidos/domain/entities/pedido.dart';
-import 'package:restaurant_app/features/pedidos/domain/entities/pedido_item.dart';
-import 'package:restaurant_app/features/pedidos/domain/repositories/pedido_repository.dart';
-import 'package:restaurant_app/features/pedidos/domain/usecases/pedido_usecases.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/domain/pedidos/repositories/pedido_repository.dart';
+import 'package:restaurant_app/Presentation/domain/pedidos/usecases/pedido_usecases.dart';
+import 'package:restaurant_app/Presentation/entities/pedidos/pedido.dart';
+import 'package:restaurant_app/Presentation/entities/pedidos/pedido_item.dart';
+import 'package:restaurant_app/Presentation/providers/cocina/cocina_provider.dart';
 
 void main() {
   group('CocinaNotifier simplified workflow', () {

@@ -1,8 +1,8 @@
 import 'package:intl/intl.dart';
 import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
-import 'package:restaurant_app/features/caja/domain/entities/venta.dart';
-import 'package:restaurant_app/services/facturacion/fiscal_config_service.dart';
+import 'package:restaurant_app/Presentation/entities/caja/venta.dart';
+import 'package:restaurant_app/Presentation/services/facturacion/fiscal_config_service.dart';
 
 class SriXmlBuilder {
   const SriXmlBuilder();

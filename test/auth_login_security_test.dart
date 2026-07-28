@@ -1,14 +1,14 @@
 import 'package:dartz/dartz.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:restaurant_app/core/di/injection_container.dart';
-import 'package:restaurant_app/core/domain/enums.dart';
-import 'package:restaurant_app/core/tenant/tenant_context.dart';
-import 'package:restaurant_app/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/domain/enums.dart';
+import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
+import 'package:restaurant_app/Presentation/domain/usuarios/repositories/usuario_repository.dart';
+import 'package:restaurant_app/Presentation/domain/usuarios/usecases/usuario_usecases.dart';
+import 'package:restaurant_app/Presentation/entities/usuarios/usuario.dart';
+import 'package:restaurant_app/Presentation/services/session_service.dart';
 import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
-import 'package:restaurant_app/features/usuarios/domain/entities/usuario.dart';
-import 'package:restaurant_app/features/usuarios/domain/repositories/usuario_repository.dart';
-import 'package:restaurant_app/features/usuarios/domain/usecases/usuario_usecases.dart';
-import 'package:restaurant_app/services/session_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
