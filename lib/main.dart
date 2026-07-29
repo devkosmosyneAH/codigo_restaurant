@@ -3,119 +3,110 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
-import 'package:restaurant_app/Presentation/core/firebase/firebase_initializer.dart';
-import 'package:restaurant_app/Presentation/core/sync/hybrid_sync_orchestrator.dart';
-import 'package:restaurant_app/Presentation/core/theme/app_theme.dart';
+import 'package:intl/date_symbol_data_local.dart';
+
 import 'package:restaurant_app/Presentation/app_startup/app_startup.dart';
 import 'package:restaurant_app/Presentation/config/routes/app_router.dart';
+import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
+import 'package:restaurant_app/Presentation/core/firebase/firebase_initializer.dart';
+import 'package:restaurant_app/Presentation/core/theme/app_theme.dart';
 import 'package:restaurant_app/Presentation/providers/auth/activation_provider.dart';
-import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
-
-/// Punto de entrada de la aplicación RestaurantApp.
-///
-/// Inicializa:
-/// 1. Inyección de dependencias (GetIt)
-/// 2. Base de datos SQLite
-/// 3. Riverpod (gestión de estado)
-/// 4. Material App con GoRouter
-///
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  return runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.dumpErrorToConsole(details);
-    debugPrint('FLUTTER ERROR: ${details.exceptionAsString()}');
-    debugPrintStack(stackTrace: details.stack);
-  };
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.dumpErrorToConsole(details);
 
-  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    debugPrint('PLATFORM DISPATCHER ERROR: $error');
-    debugPrintStack(stackTrace: stack);
-    return true;
-  };
+        debugPrint('==================== FLUTTER ERROR ====================');
+        debugPrint(details.exceptionAsString());
+        debugPrintStack(stackTrace: details.stack);
+        debugPrint('=======================================================');
+      };
 
-  try {
-    debugPrint('STEP 1 - initializeDateFormatting');
-    await initializeDateFormatting('es', null);
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        debugPrint('================ PLATFORM ERROR =================');
+        debugPrint(error.toString());
+        debugPrintStack(stackTrace: stack);
+        debugPrint('=================================================');
+        return true;
+      };
 
-    debugPrint('STEP 2 - initializeDesktopWindow');
-    await initializeDesktopWindow();
-
-    debugPrint('STEP 3 - initializePlatformSpecific');
-    await initializePlatformSpecific();
-
-    debugPrint('STEP 4 - FirebaseAppInitializer.initialize');
-    await FirebaseAppInitializer.initialize();
-
-    debugPrint('STEP 5 - initDependencies');
-    await initDependencies();
-
-    debugPrint('STEP 6 - ActivationChangeNotifier.loadStatus');
-    await sl<ActivationChangeNotifier>().loadStatus();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        debugPrint('STEP 7 - AuthChangeNotifier.restoreSession (post frame)');
-        await sl<AuthChangeNotifier>().restoreSession();
-      } catch (e, st) {
-        debugPrint('ERROR EN RESTORE SESSIONS (post frame)');
+        debugPrint('STEP 1 - initializeDateFormatting');
+        await initializeDateFormatting('es', null);
+
+        debugPrint('STEP 2 - initializeDesktopWindow');
+        await initializeDesktopWindow();
+
+        debugPrint('STEP 3 - initializePlatformSpecific');
+        await initializePlatformSpecific();
+
+        debugPrint('STEP 4 - FirebaseAppInitializer.initialize');
+        await FirebaseAppInitializer.initialize();
+
+        debugPrint('STEP 5 - initDependencies');
+        await initDependencies();
+
+        debugPrint('STEP 6 - ActivationChangeNotifier.loadStatus');
+        await sl<ActivationChangeNotifier>().loadStatus();
+
+        // ==========================================================
+        // NO iniciar Google.
+        // NO iniciar HybridSync.
+        // NO restaurar sesión aquí.
+        // ==========================================================
+
+        debugPrint('STEP 7 - runApp');
+
+        runApp(const ProviderScope(child: RestaurantApp()));
+      } catch (e, s) {
+        debugPrint('================ ERROR EN MAIN =================');
         debugPrint(e.toString());
-        debugPrintStack(stackTrace: st);
+        debugPrintStack(stackTrace: s);
+        debugPrint('================================================');
+
+        rethrow;
       }
-    });
-
-    debugPrint('STEP 9 - HybridSyncOrchestrator.start');
-    await sl<HybridSyncOrchestrator>().start();
-
-    debugPrint('STEP 10 - runApp');
-    runZonedGuarded(() {
-      runApp(const ProviderScope(child: RestaurantApp()));
-    }, (error, stack) {
-      debugPrint('ZONE ERROR: $error');
+    },
+    (error, stack) {
+      debugPrint('================ ZONE ERROR =================');
+      debugPrint(error.toString());
       debugPrintStack(stackTrace: stack);
-    });
-  } catch (e, s) {
-    debugPrint('==============================');
-    debugPrint('ERROR EN MAIN');
-    debugPrint(e.toString());
-    debugPrintStack(stackTrace: s);
-    debugPrint('==============================');
-    rethrow;
-  }
+      debugPrint('==============================================');
+    },
+  );
 }
 
-/// Widget raíz de la aplicación.
 class RestaurantApp extends StatelessWidget {
   const RestaurantApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      // ── Configuración general ─────────────────────────────────
       title: 'La Peña • Sistema de Gestión',
+
       debugShowCheckedModeBanner: false,
 
-      // ── Localización ──────────────────────────────────────────
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+
       supportedLocales: const [Locale('es', 'ES'), Locale('en', 'US')],
+
       locale: const Locale('es', 'ES'),
 
-      // ── Tema Material 3 ───────────────────────────────────────
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
 
-      // ── Router ────────────────────────────────────────────────
       routerConfig: AppRouter.router,
     );
   }

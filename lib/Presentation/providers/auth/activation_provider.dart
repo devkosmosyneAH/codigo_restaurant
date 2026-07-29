@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:restaurant_app/Presentation/services/activation_service.dart';
 
 class ActivationChangeNotifier extends ChangeNotifier {

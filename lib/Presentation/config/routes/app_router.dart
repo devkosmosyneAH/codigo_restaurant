@@ -40,6 +40,7 @@ class AppRouter {
   static final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
   /// Rutas nombradas para navegación tipada.
+  static const String activation = '/activation';
   static const String login = '/login';
   static const String home = '/';
   static const String mesas = '/mesas';
@@ -140,6 +141,7 @@ class AppRouter {
     redirect: (context, state) {
       final auth = sl<AuthChangeNotifier>();
       final activation = sl<ActivationChangeNotifier>();
+
       final isLoggedIn = auth.isAuthenticated;
       debugPrint(
         "ROUTER redirect:"
