@@ -4,10 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
 import 'package:restaurant_app/Presentation/services/backup_service.dart';
-
-
 import 'package:restaurant_app/Presentation/services/database_service.dart';
-
 import 'package:restaurant_app/Presentation/services/database_location_service.dart';
 
 Future<void> performAutomaticBackupIfNeeded() async {
@@ -20,8 +17,8 @@ Future<Map<String, dynamic>> getBackupOverview() async {
   final dbInfo = await DatabaseService.getDatabaseInfo();
 
   return {
-    'supported': true,
-    'message': null,
+    'supported': dbInfo['supported'] ?? true,
+    'message': dbInfo['supported'] == false ? dbInfo['message'] : null,
     'stats': stats,
     'backups': backups,
     'dbInfo': dbInfo,
@@ -33,14 +30,20 @@ Future<bool> createManualBackup({String? customName}) {
 }
 
 Future<bool> restoreBackup(String backupName) async {
+  if (!DatabaseService.enabled) {
+    return false;
+  }
+
   await DatabaseHelper.instance.close();
   await DatabaseService.closeDatabase();
 
   try {
     return await BackupService.restoreFromBackup(backupName);
   } finally {
-    await DatabaseHelper.instance.database;
-    await DatabaseService.database;
+    if (DatabaseService.enabled) {
+      await DatabaseHelper.instance.database;
+      await DatabaseService.database;
+    }
   }
 }
 

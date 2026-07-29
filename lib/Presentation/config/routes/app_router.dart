@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:restaurant_app/Presentation/views/auth/activation_page.dart';
 import 'package:restaurant_app/Presentation/views/auth/login_page.dart';
 import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
@@ -153,6 +154,7 @@ class AppRouter {
         " isLoading=${activation.isLoading}",
       );
       final isLoginRoute = state.matchedLocation == login;
+      final isActivationRoute = state.matchedLocation == activation;
       final loc = state.matchedLocation;
       final isAuthLoading = auth.isSessionRestoring;
 
@@ -161,8 +163,10 @@ class AppRouter {
       if (isPublicLocation(loc)) return null;
 
       // A partir de aquí la ruta requiere la app activada.
-      if (!activation.canAccessApp && !isLoginRoute) return login;
-      if (!activation.canAccessApp && isLoginRoute) return null;
+      if (!activation.canAccessApp && !isActivationRoute) {
+        return AppRouter.activation;
+      }
+      if (!activation.canAccessApp && isActivationRoute) return null;
 
       // Mientras la sesión está en restauración inicial, no forzar redirect.
       // Esto evita perder la ruta solicitada en el refresh cuando el usuario
@@ -183,6 +187,11 @@ class AppRouter {
     },
     routes: [
       // ── Login (fuera del shell) ──────────────────────────────────
+      GoRoute(
+        path: activation,
+        pageBuilder: (context, state) =>
+            const NoTransitionPage(child: ActivationPage()),
+      ),
       GoRoute(
         path: login,
         pageBuilder: (context, state) =>

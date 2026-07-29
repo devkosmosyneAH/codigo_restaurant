@@ -47,13 +47,16 @@ Future<void> main() async {
         debugPrint('STEP 3 - initializePlatformSpecific');
         await initializePlatformSpecific();
 
-        debugPrint('STEP 4 - FirebaseAppInitializer.initialize');
+        debugPrint('STEP 4 - initDatabaseSafely');
+        await initDatabaseSafely();
+
+        debugPrint('STEP 5 - FirebaseAppInitializer.initialize');
         await FirebaseAppInitializer.initialize();
 
-        debugPrint('STEP 5 - initDependencies');
+        debugPrint('STEP 6 - initDependencies');
         await initDependencies();
 
-        debugPrint('STEP 6 - ActivationChangeNotifier.loadStatus');
+        debugPrint('STEP 7 - ActivationChangeNotifier.loadStatus');
         await sl<ActivationChangeNotifier>().loadStatus();
 
         // ==========================================================

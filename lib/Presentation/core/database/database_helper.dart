@@ -17,11 +17,30 @@ class DatabaseHelper {
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
 
+  static bool enabled = false;
+
   Database? _database;
+
+  static void disableLocalDatabase() {
+    enabled = false;
+  }
+
+  static void enableLocalDatabase() {
+    enabled = true;
+  }
+
+  void _assertEnabled() {
+    if (!enabled) {
+      throw StateError(
+        'La base de datos local SQLite está deshabilitada. Usa Firebase/Drive en su lugar.',
+      );
+    }
+  }
 
   /// Obtiene la instancia de la base de datos.
   /// Si no existe, la crea e inicializa las tablas.
   Future<Database> get database async {
+    _assertEnabled();
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
@@ -1157,6 +1176,7 @@ class DatabaseHelper {
     Map<String, dynamic> data, {
     ConflictAlgorithm conflictAlgorithm = ConflictAlgorithm.replace,
   }) async {
+    _assertEnabled();
     final db = await database;
     return db.insert(table, data, conflictAlgorithm: conflictAlgorithm);
   }
@@ -1169,6 +1189,7 @@ class DatabaseHelper {
     String? orderBy,
     int? limit,
   }) async {
+    _assertEnabled();
     final db = await database;
     return db.query(
       table,
@@ -1186,6 +1207,7 @@ class DatabaseHelper {
     String? where,
     List<Object?>? whereArgs,
   }) async {
+    _assertEnabled();
     final db = await database;
     return db.update(table, data, where: where, whereArgs: whereArgs);
   }
@@ -1196,6 +1218,7 @@ class DatabaseHelper {
     String? where,
     List<Object?>? whereArgs,
   }) async {
+    _assertEnabled();
     final db = await database;
     return db.delete(table, where: where, whereArgs: whereArgs);
   }
@@ -1205,18 +1228,26 @@ class DatabaseHelper {
     String sql, [
     List<Object?>? arguments,
   ]) async {
+    _assertEnabled();
     final db = await database;
     return db.rawQuery(sql, arguments);
   }
 
   /// Ejecuta una operación dentro de una transacción.
   Future<T> transaction<T>(Future<T> Function(Transaction txn) action) async {
+    _assertEnabled();
     final db = await database;
     return db.transaction(action);
   }
 
   /// Cierra la conexión a la base de datos.
   Future<void> close() async {
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+      return;
+    }
+    if (!enabled) return;
     final db = await database;
     await db.close();
     _database = null;

@@ -54,10 +54,39 @@ Future<void> performAutomaticBackupIfNeeded() async {
 Future<Map<String, dynamic>> getBackupOverview() async {
   await _performAutomaticBackupIfNeededInternal();
 
-  final db = await DatabaseHelper.instance.database;
-  final dbSizeMb = await _estimateDbSizeMb(db);
   final backups = await _readBackupEntries();
   final config = await _readBackupConfig();
+
+  if (!DatabaseHelper.enabled) {
+    return {
+      'supported': false,
+      'message': 'La base de datos local SQLite está deshabilitada.',
+      'stats': {
+        'totalBackups': backups.length,
+        'lastBackupTime': config['lastBackupTime'],
+      },
+      'backups': backups
+          .map(
+            (b) => {
+              'name': b.name,
+              'created': b.createdAt,
+              'size': b.sizeBytes / (1024 * 1024),
+              'sizeFormatted': _formatSize(b.sizeBytes),
+              'createdFormatted': _dtFmt.format(b.createdAt),
+            },
+          )
+          .toList(),
+      'dbInfo': {
+        'path': 'SQLite Web deshabilitado',
+        'exists': false,
+        'sizeMB': 0.0,
+        'storageType': 'browser',
+      },
+    };
+  }
+
+  final db = await DatabaseHelper.instance.database;
+  final dbSizeMb = await _estimateDbSizeMb(db);
 
   DateTime? lastBackup;
   final lastRaw = config['lastBackupTime'];
@@ -103,6 +132,10 @@ Future<bool> createManualBackup({String? customName}) async {
 }
 
 Future<bool> restoreBackup(String backupName) async {
+  if (!DatabaseHelper.enabled) {
+    return false;
+  }
+
   try {
     final prefs = await SharedPreferences.getInstance();
     final snapshotJson = prefs.getString(_payloadKey(backupName));

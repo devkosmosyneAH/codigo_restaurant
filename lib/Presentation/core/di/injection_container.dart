@@ -139,8 +139,8 @@ Future<void> initDependencies() async {
   _initPaginaPublica();
   _initClientes();
 
-  // Inicializar la base de datos
-  await sl<DatabaseHelper>().database;
+  // No iniciar la base de datos local automáticamente.
+  // Las operaciones de Firebase/Drive se usan sin conexión local SQL.
 }
 
 /// Registra las dependencias del módulo de Mesas.

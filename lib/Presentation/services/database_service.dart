@@ -10,9 +10,27 @@ import 'backup_service.dart';
 /// Servicio principal para manejar la conexión con SQLite
 /// Actualizado con sistema de ubicación automática y respaldos
 class DatabaseService {
+  static bool enabled = false;
   static Database? _database;
 
+  static void disableLocalDatabase() {
+    enabled = false;
+  }
+
+  static void enableLocalDatabase() {
+    enabled = true;
+  }
+
+  static void _assertEnabled() {
+    if (!enabled) {
+      throw StateError(
+        'El servicio de base de datos local SQLite está deshabilitado. Usa Firebase/Drive en su lugar.',
+      );
+    }
+  }
+
   static Future<Database> get database async {
+    _assertEnabled();
     if (_database != null) return _database!;
     _database = await _initDatabase();
     return _database!;
@@ -101,7 +119,9 @@ class DatabaseService {
     if (_database != null) {
       await _database!.close();
       _database = null;
+      return;
     }
+    if (!enabled) return;
   }
 
   /// Método helper para ejecutar queries raw
@@ -109,6 +129,7 @@ class DatabaseService {
     String sql, [
     List<dynamic>? arguments,
   ]) async {
+    _assertEnabled();
     final db = await database;
     final result = await db.rawQuery(sql, arguments);
     return result;
@@ -116,6 +137,7 @@ class DatabaseService {
 
   /// Método helper para ejecutar comandos raw
   static Future<int> rawInsert(String sql, [List<dynamic>? arguments]) async {
+    _assertEnabled();
     final db = await database;
     final result = await db.rawInsert(sql, arguments);
     return result;
@@ -123,12 +145,14 @@ class DatabaseService {
 
   /// Método helper para ejecutar updates raw
   static Future<int> rawUpdate(String sql, [List<dynamic>? arguments]) async {
+    _assertEnabled();
     final db = await database;
     return await db.rawUpdate(sql, arguments);
   }
 
   /// Método helper para ejecutar deletes raw
   static Future<int> rawDelete(String sql, [List<dynamic>? arguments]) async {
+    _assertEnabled();
     final db = await database;
     return await db.rawDelete(sql, arguments);
   }
@@ -137,12 +161,20 @@ class DatabaseService {
   static Future<T> transaction<T>(
     Future<T> Function(Transaction txn) action,
   ) async {
+    _assertEnabled();
     final db = await database;
     return await db.transaction(action);
   }
 
   /// Obtener información de la base de datos actual
   static Future<Map<String, dynamic>> getDatabaseInfo() async {
+    if (!enabled) {
+      return {
+        'supported': false,
+        'message': 'La base de datos local está deshabilitada.',
+      };
+    }
+
     try {
       final path = await DatabaseLocationService.getDatabasePath();
       final exists = await DatabaseLocationService.databaseExists(path);
@@ -183,8 +215,8 @@ class DatabaseService {
 
       final result = await BackupService.restoreFromBackup(backupName);
 
-      // Reinicializar la base de datos después de restaurar
-      if (result) {
+      // Reinicializar la base de datos después de restaurar solo si está habilitada.
+      if (result && enabled) {
         _database = await _initDatabase();
       }
 

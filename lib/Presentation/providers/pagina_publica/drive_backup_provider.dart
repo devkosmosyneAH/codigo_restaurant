@@ -148,9 +148,13 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
     await DatabaseHelper.instance.close();
     await DatabaseService.closeDatabase();
     final result = await _service.restore();
-    // Reabrir la BD para que la app siga funcionando
-    await DatabaseHelper.instance.database;
-    await DatabaseService.database;
+    // Reabrir la BD solo si el acceso local sigue habilitado
+    if (DatabaseHelper.enabled) {
+      await DatabaseHelper.instance.database;
+    }
+    if (DatabaseService.enabled) {
+      await DatabaseService.database;
+    }
     state = state.copyWith(
       isLoading: false,
       lastMessage: result.message,

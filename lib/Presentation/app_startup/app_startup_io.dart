@@ -1,11 +1,7 @@
 import 'dart:io';
-
-import 'package:flutter/services.dart';
-import 'package:path/path.dart';
-import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
+import 'dart:ui' show Size;
 import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
 import 'package:restaurant_app/Presentation/services/database_service.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:window_manager/window_manager.dart';
 
 Future<void> initializeDesktopWindow() async {
@@ -35,87 +31,12 @@ Future<void> initializeDesktopWindow() async {
 }
 
 Future<void> initializePlatformSpecific() async {
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+  // No database initialization required when using Firebase and Drive only.
+  // Mantener deshabilitado cualquier acceso a SQLite local en el arranque.
 }
 
 Future<void> initDatabaseSafely() async {
-  try {
-    if (Platform.isIOS || Platform.isAndroid) {
-      await _initMobileDatabase();
-    } else {
-      await DatabaseService.database;
-    }
-  } catch (_) {
-    await _safeFallbackDatabaseInit();
-  }
-}
-
-Future<void> _initMobileDatabase() async {
-  final dbPath = join(await getDatabasesPath(), AppConstants.databaseName);
-  final dbFile = File(dbPath);
-
-  if (!await dbFile.exists()) {
-    final data = await rootBundle.load('assets/database/data.db');
-    final bytes = data.buffer.asUint8List(
-      data.offsetInBytes,
-      data.lengthInBytes,
-    );
-    await dbFile.writeAsBytes(bytes, flush: true);
-  }
-
-  final db = await openDatabase(
-    dbPath,
-    version: AppConstants.databaseVersion,
-    readOnly: false,
-    onUpgrade: _onDatabaseUpgrade,
-  );
-  await db.close();
-}
-
-/// Aplica migraciones de esquema al actualizar la versión de la BD.
-/// Agregar nuevos `case` aquí cada vez que se modifique el esquema.
-Future<void> _onDatabaseUpgrade(
-  Database db,
-  int oldVersion,
-  int newVersion,
-) async {
-  await DatabaseHelper.applyMigrations(db, oldVersion, newVersion);
-}
-
-Future<void> _safeFallbackDatabaseInit() async {
-  try {
-    if (Platform.isIOS || Platform.isAndroid) {
-      final dbPath = join(await getDatabasesPath(), AppConstants.databaseName);
-      final dbFile = File(dbPath);
-
-      if (await dbFile.exists()) {
-        try {
-          final db = await openDatabase(dbPath, readOnly: true);
-          await db.close();
-          return;
-        } catch (_) {
-          await dbFile.delete();
-        }
-      }
-
-      final data = await rootBundle.load('assets/database/data.db');
-      final bytes = data.buffer.asUint8List(
-        data.offsetInBytes,
-        data.lengthInBytes,
-      );
-
-      await dbFile.writeAsBytes(bytes, flush: true);
-      final db = await openDatabase(
-        dbPath,
-        version: AppConstants.databaseVersion,
-        onUpgrade: _onDatabaseUpgrade,
-      );
-      await db.close();
-    }
-  } catch (_) {
-    // La app puede continuar con la BD disponible localmente.
-  }
+  // Deshabilitado: no se inicializa SQLite local.
+  DatabaseHelper.disableLocalDatabase();
+  DatabaseService.disableLocalDatabase();
 }
