@@ -7,7 +7,7 @@ import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/Presentation/domain/clientes/repositories/cliente_repository.dart';
 import 'package:restaurant_app/Presentation/domain/clientes/usecases/cliente_usecases.dart';
 import 'package:restaurant_app/Presentation/entities/clientes/cliente.dart';
-
+import 'package:restaurant_app/Presentation/services/clientes/cliente_service_impl.dart';
 
 void main() {
   group('ClienteServiceImpl', () {

@@ -7,8 +7,8 @@ import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
 import 'package:restaurant_app/Presentation/domain/usuarios/repositories/usuario_repository.dart';
 import 'package:restaurant_app/Presentation/domain/usuarios/usecases/usuario_usecases.dart';
 import 'package:restaurant_app/Presentation/entities/usuarios/usuario.dart';
-import 'package:restaurant_app/Presentation/services/session_service.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
+import 'package:restaurant_app/Presentation/services/session_service.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

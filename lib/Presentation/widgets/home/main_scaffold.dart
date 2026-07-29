@@ -7,8 +7,9 @@ import 'package:restaurant_app/Presentation/config/routes/app_router.dart';
 import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 import 'package:restaurant_app/Presentation/core/theme/app_colors.dart';
+import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
 import 'package:restaurant_app/Presentation/providers/pedidos/pedidos_provider.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
+import 'package:restaurant_app/Presentation/widgets/pedidos/aprobar_pedidos_sheet.dart';
 
 class MainScaffold extends ConsumerStatefulWidget {
   final Widget child;

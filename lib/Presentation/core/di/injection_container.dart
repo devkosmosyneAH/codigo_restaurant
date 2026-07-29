@@ -4,6 +4,40 @@ import 'package:restaurant_app/Presentation/core/sync/hybrid_sync_orchestrator.d
 import 'package:restaurant_app/Presentation/core/sync/sync_cloud_service.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
 import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
+import 'package:restaurant_app/Presentation/data/caja/caja_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/caja/caja_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/caja/caja_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/clientes/cliente_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/clientes/cliente_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/clientes/cliente_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/cotizaciones/cotizacion_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/cotizaciones/cotizacion_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/cotizaciones/cotizacion_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/menu/drive_connection_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/menu/llamado_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/menu/menu_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/menu/menu_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/menu/menu_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/mesas/llamado_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/mesas/llamado_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/mesas/mesa_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/mesas/mesa_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/mesas/mesa_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/pagina_publica/public_config_datasource.dart';
+import 'package:restaurant_app/Presentation/data/pagina_publica/public_config_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/pagina_publica/public_config_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/pedidos/pedido_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/pedidos/pedido_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/pedidos/pedido_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/reportes/reportes_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/reportes/reportes_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/reportes/reportes_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/reservaciones/reserva_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/reservaciones/reserva_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/reservaciones/reserva_repository_impl.dart';
+import 'package:restaurant_app/Presentation/data/usuarios/usuario_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/usuarios/usuario_local_datasource_impl.dart';
+import 'package:restaurant_app/Presentation/data/usuarios/usuario_repository_impl.dart';
 import 'package:restaurant_app/Presentation/domain/caja/repositories/caja_repository.dart';
 import 'package:restaurant_app/Presentation/domain/caja/usecases/caja_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/clientes/repositories/cliente_repository.dart';
@@ -18,106 +52,26 @@ import 'package:restaurant_app/Presentation/domain/mesas/usecases/llamado_usecas
 import 'package:restaurant_app/Presentation/domain/mesas/usecases/mesa_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/pagina_publica/repositories/public_config_repository.dart';
 import 'package:restaurant_app/Presentation/domain/pagina_publica/usecases/public_config_usecases.dart';
+import 'package:restaurant_app/Presentation/domain/pedidos/repositories/pedido_repository.dart';
 import 'package:restaurant_app/Presentation/domain/pedidos/usecases/pedido_usecases.dart';
+import 'package:restaurant_app/Presentation/domain/reportes/repositories/reportes_repository.dart';
 import 'package:restaurant_app/Presentation/domain/reportes/usecases/reportes_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/reservaciones/repositories/reserva_repository.dart';
 import 'package:restaurant_app/Presentation/domain/reservaciones/usecases/reserva_usecases.dart';
 import 'package:restaurant_app/Presentation/domain/usuarios/repositories/usuario_repository.dart';
 import 'package:restaurant_app/Presentation/domain/usuarios/usecases/usuario_usecases.dart';
 import 'package:restaurant_app/Presentation/providers/auth/activation_provider.dart';
+import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
 import 'package:restaurant_app/Presentation/services/clientes/cliente_service.dart';
 import 'package:restaurant_app/Presentation/services/clientes/cliente_service_impl.dart';
 import 'package:restaurant_app/Presentation/services/drive_auth_coordinator.dart';
 import 'package:restaurant_app/Presentation/services/drive_backup_service.dart';
 import 'package:restaurant_app/Presentation/services/facturacion/sri_service.dart';
 import 'package:restaurant_app/Presentation/services/firebase_auth_service.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/activation_provider.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
-import 'package:restaurant_app/services/facturacion/sri_service.dart';
-import 'package:restaurant_app/services/firebase_auth_service.dart';
-import 'package:restaurant_app/services/drive_backup_service.dart';
-import 'package:restaurant_app/services/drive_auth_coordinator.dart';
-
-// ── Mesas ────────────────────────────────────────────────────────────
-import 'package:restaurant_app/features/mesas/data/datasources/mesa_local_datasource.dart';
-import 'package:restaurant_app/features/mesas/data/datasources/mesa_local_datasource_impl.dart';
-import 'package:restaurant_app/features/mesas/data/datasources/llamado_local_datasource.dart';
-import 'package:restaurant_app/features/mesas/data/datasources/llamado_local_datasource_impl.dart';
-import 'package:restaurant_app/features/mesas/data/repositories/mesa_repository_impl.dart';
-import 'package:restaurant_app/features/mesas/data/repositories/llamado_repository_impl.dart';
-import 'package:restaurant_app/features/mesas/domain/repositories/mesa_repository.dart';
-import 'package:restaurant_app/features/mesas/domain/repositories/llamado_repository.dart';
-import 'package:restaurant_app/features/mesas/domain/usecases/mesa_usecases.dart';
-import 'package:restaurant_app/features/mesas/domain/usecases/llamado_usecases.dart';
-
-// ── Pedidos ──────────────────────────────────────────────────────────
-import 'package:restaurant_app/features/pedidos/data/datasources/pedido_local_datasource.dart';
-import 'package:restaurant_app/features/pedidos/data/datasources/pedido_local_datasource_impl.dart';
-import 'package:restaurant_app/features/pedidos/data/repositories/pedido_repository_impl.dart';
-import 'package:restaurant_app/features/pedidos/domain/repositories/pedido_repository.dart';
-import 'package:restaurant_app/features/pedidos/domain/usecases/pedido_usecases.dart';
-
-// ── Menú ─────────────────────────────────────────────────────────────
-import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasource.dart';
-import 'package:restaurant_app/features/menu/data/datasources/drive_connection_local_datasource.dart';
-import 'package:restaurant_app/features/menu/data/datasources/menu_local_datasource_impl.dart';
-import 'package:restaurant_app/features/menu/data/repositories/menu_repository_impl.dart';
-import 'package:restaurant_app/features/menu/data/services/drive_image_sync_queue_service.dart';
-import 'package:restaurant_app/features/menu/data/services/drive_menu_connection_service.dart';
-import 'package:restaurant_app/features/menu/data/services/menu_sync_diagnostics_service.dart';
-import 'package:restaurant_app/features/menu/data/services/menu_realtime_database_service.dart';
-import 'package:restaurant_app/features/menu/domain/repositories/menu_repository.dart';
-import 'package:restaurant_app/features/menu/domain/usecases/menu_usecases.dart';
-
-// ── Cotizaciones ───────────────────────────────────────────────────
-import 'package:restaurant_app/features/cotizaciones/data/datasources/cotizacion_local_datasource.dart';
-import 'package:restaurant_app/features/cotizaciones/data/datasources/cotizacion_local_datasource_impl.dart';
-import 'package:restaurant_app/features/cotizaciones/data/repositories/cotizacion_repository_impl.dart';
-import 'package:restaurant_app/features/cotizaciones/domain/repositories/cotizacion_repository.dart';
-import 'package:restaurant_app/features/cotizaciones/domain/usecases/cotizacion_usecases.dart';
-
-// ── Reservaciones ──────────────────────────────────────────────────
-import 'package:restaurant_app/features/reservaciones/data/datasources/reserva_local_datasource.dart';
-import 'package:restaurant_app/features/reservaciones/data/datasources/reserva_local_datasource_impl.dart';
-import 'package:restaurant_app/features/reservaciones/data/repositories/reserva_repository_impl.dart';
-import 'package:restaurant_app/features/reservaciones/domain/repositories/reserva_repository.dart';
-import 'package:restaurant_app/features/reservaciones/domain/usecases/reserva_usecases.dart';
-
-// ── Caja ─────────────────────────────────────────────────────────────
-import 'package:restaurant_app/features/caja/data/datasources/caja_local_datasource.dart';
-import 'package:restaurant_app/features/caja/data/datasources/caja_local_datasource_impl.dart';
-import 'package:restaurant_app/features/caja/data/repositories/caja_repository_impl.dart';
-import 'package:restaurant_app/features/caja/domain/repositories/caja_repository.dart';
-import 'package:restaurant_app/features/caja/domain/usecases/caja_usecases.dart';
-
-// ── Reportes ──────────────────────────────────────────────────────────
-import 'package:restaurant_app/features/reportes/data/datasources/reportes_local_datasource.dart';
-import 'package:restaurant_app/features/reportes/data/datasources/reportes_local_datasource_impl.dart';
-import 'package:restaurant_app/features/reportes/data/repositories/reportes_repository_impl.dart';
-import 'package:restaurant_app/features/reportes/domain/repositories/reportes_repository.dart';
-import 'package:restaurant_app/features/reportes/domain/usecases/reportes_usecases.dart';
-
-// ── Usuarios ─────────────────────────────────────────────────────────
-import 'package:restaurant_app/features/usuarios/data/datasources/usuario_local_datasource.dart';
-import 'package:restaurant_app/features/usuarios/data/datasources/usuario_local_datasource_impl.dart';
-import 'package:restaurant_app/features/usuarios/data/repositories/usuario_repository_impl.dart';
-import 'package:restaurant_app/features/usuarios/domain/repositories/usuario_repository.dart';
-import 'package:restaurant_app/features/usuarios/domain/usecases/usuario_usecases.dart';
-// ── Página Pública ────────────────────────────────────────────────
-import 'package:restaurant_app/features/pagina_publica/data/datasources/public_config_datasource.dart';
-import 'package:restaurant_app/features/pagina_publica/data/datasources/public_config_datasource_impl.dart';
-import 'package:restaurant_app/features/pagina_publica/data/repositories/public_config_repository_impl.dart';
-import 'package:restaurant_app/features/pagina_publica/domain/repositories/public_config_repository.dart';
-import 'package:restaurant_app/features/pagina_publica/domain/usecases/public_config_usecases.dart';
-
-// ── Clientes ──────────────────────────────────────────────────────
-import 'package:restaurant_app/features/clientes/data/datasources/cliente_local_datasource.dart';
-import 'package:restaurant_app/features/clientes/data/datasources/cliente_local_datasource_impl.dart';
-import 'package:restaurant_app/features/clientes/data/repositories/cliente_repository_impl.dart';
-import 'package:restaurant_app/features/clientes/data/services/cliente_service_impl.dart';
-import 'package:restaurant_app/features/clientes/domain/repositories/cliente_repository.dart';
-import 'package:restaurant_app/features/clientes/domain/services/cliente_service.dart';
-import 'package:restaurant_app/features/clientes/domain/usecases/cliente_usecases.dart';
+import 'package:restaurant_app/Presentation/services/menu/drive_image_sync_queue_service.dart';
+import 'package:restaurant_app/Presentation/services/menu/drive_menu_connection_service_web.dart';
+import 'package:restaurant_app/Presentation/services/menu/menu_realtime_database_service.dart';
+import 'package:restaurant_app/Presentation/services/menu/menu_sync_diagnostics_service.dart';
 
 /// Service Locator global.
 ///

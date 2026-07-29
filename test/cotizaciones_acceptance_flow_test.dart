@@ -16,7 +16,7 @@ import 'package:restaurant_app/Presentation/entities/cotizaciones/cotizacion_ite
 import 'package:restaurant_app/Presentation/entities/pagina_publica/public_config.dart';
 import 'package:restaurant_app/Presentation/entities/reservaciones/reserva.dart';
 import 'package:restaurant_app/Presentation/providers/cotizaciones/cotizaciones_provider.dart';
-import 'package:restaurant_app/Presentation/views/cotizaciones/pages/cotizaciones_page.dart';
+import 'package:restaurant_app/Presentation/views/cotizaciones/cotizaciones_page.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

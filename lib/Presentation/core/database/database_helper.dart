@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as PinHasher;
+
 import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/database/database_tables.dart';
+import 'package:restaurant_app/Presentation/core/utils/pin_hasher.dart';
 import 'package:restaurant_app/Presentation/services/database_location_service.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';

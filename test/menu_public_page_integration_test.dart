@@ -22,7 +22,7 @@ import 'package:restaurant_app/Presentation/entities/menu/variante.dart';
 import 'package:restaurant_app/Presentation/entities/pagina_publica/public_config.dart';
 import 'package:restaurant_app/Presentation/entities/reservaciones/reserva.dart';
 import 'package:restaurant_app/Presentation/services/clientes/cliente_service.dart';
-import 'package:restaurant_app/Presentation/views/menu/pages/menu_public_page.dart';
+import 'package:restaurant_app/Presentation/views/menu/menu_public_page.dart';
 import 'package:restaurant_app/Presentation/widgets/menu/public_producto_card.dart';
 
 

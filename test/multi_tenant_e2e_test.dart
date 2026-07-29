@@ -14,9 +14,10 @@ import 'package:restaurant_app/Presentation/data/mesas/mesa_local_datasource_imp
 import 'package:restaurant_app/Presentation/domain/usuarios/repositories/usuario_repository.dart';
 import 'package:restaurant_app/Presentation/domain/usuarios/usecases/usuario_usecases.dart';
 import 'package:restaurant_app/Presentation/entities/usuarios/usuario.dart';
+import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
 import 'package:restaurant_app/Presentation/providers/sincronizacion/sync_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:restaurant_app/features/auth/presentation/providers/auth_provider.dart';
+
 
 class _MockDatabaseHelper extends Mock implements DatabaseHelper {}
 

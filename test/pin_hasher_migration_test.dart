@@ -8,6 +8,7 @@ import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/Presentation/core/utils/pin_hasher.dart';
+import 'package:restaurant_app/Presentation/data/usuarios/usuario_local_datasource_impl.dart';
 
 class _MockDatabaseHelper extends Mock implements DatabaseHelper {}
 

@@ -3,7 +3,7 @@ import 'package:restaurant_app/Presentation/Models/mesas/mesa_model.dart';
 import 'package:restaurant_app/Presentation/core/errors/exceptions.dart';
 import 'package:restaurant_app/Presentation/core/errors/failures.dart';
 import 'package:restaurant_app/Presentation/core/utils/typedefs.dart';
-import 'package:restaurant_app/Presentation/data/mesas/datasources/mesa_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/mesas/mesa_local_datasource.dart';
 import 'package:restaurant_app/Presentation/domain/mesas/repositories/mesa_repository.dart';
 import 'package:restaurant_app/Presentation/entities/mesas/mesa.dart';
 

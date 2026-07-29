@@ -36,7 +36,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() {
       _isLoading = false;
     });
-    if (result \!= null) {
+    if (result != null) {
       setState(() => _errorText = result);
     }
   }
@@ -52,7 +52,10 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Iniciar sesión', style: Theme.of(context).textTheme.headlineMedium),
+                Text(
+                  'Iniciar sesión',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
                 const SizedBox(height: 24),
                 AuthEmailPasswordForm(
                   emailController: _emailController,

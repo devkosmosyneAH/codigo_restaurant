@@ -16,8 +16,8 @@ import 'package:restaurant_app/Presentation/entities/reservaciones/reserva.dart'
 import 'package:restaurant_app/Presentation/providers/cotizaciones/cotizaciones_provider.dart';
 import 'package:restaurant_app/Presentation/providers/mesas/mesas_provider.dart';
 import 'package:restaurant_app/Presentation/providers/reservaciones/reservas_provider.dart';
-import 'package:restaurant_app/Presentation/views/reservaciones/pages/reservas_page.dart';
-import 'package:restaurant_app/Presentation/views/reservaciones/pages/reservas_public_page.dart';
+import 'package:restaurant_app/Presentation/views/reservaciones/reservas_page.dart';
+import 'package:restaurant_app/Presentation/views/reservaciones/reservas_public_page.dart';
 import 'package:restaurant_app/Presentation/core/domain/enums.dart';
 
 void main() {

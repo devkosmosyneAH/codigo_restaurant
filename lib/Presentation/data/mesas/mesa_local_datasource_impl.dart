@@ -4,7 +4,7 @@ import 'package:restaurant_app/Presentation/core/errors/exceptions.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
-import 'package:restaurant_app/Presentation/data/mesas/datasources/mesa_local_datasource.dart';
+import 'package:restaurant_app/Presentation/data/mesas/mesa_local_datasource.dart';
 
 
 /// Implementación del datasource local de Mesas usando SQLite.
