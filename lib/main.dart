@@ -12,6 +12,7 @@ import 'package:restaurant_app/Presentation/core/di/injection_container.dart';
 import 'package:restaurant_app/Presentation/core/firebase/firebase_initializer.dart';
 import 'package:restaurant_app/Presentation/core/theme/app_theme.dart';
 import 'package:restaurant_app/Presentation/providers/auth/activation_provider.dart';
+import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -59,13 +60,10 @@ Future<void> main() async {
         debugPrint('STEP 7 - ActivationChangeNotifier.loadStatus');
         await sl<ActivationChangeNotifier>().loadStatus();
 
-        // ==========================================================
-        // NO iniciar Google.
-        // NO iniciar HybridSync.
-        // NO restaurar sesión aquí.
-        // ==========================================================
+        debugPrint('STEP 8 - AuthChangeNotifier.restoreSession');
+        await sl<AuthChangeNotifier>().restoreSession();
 
-        debugPrint('STEP 7 - runApp');
+        debugPrint('STEP 9 - runApp');
 
         runApp(const ProviderScope(child: RestaurantApp()));
       } catch (e, s) {
