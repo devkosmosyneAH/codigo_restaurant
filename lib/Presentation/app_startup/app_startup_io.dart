@@ -36,7 +36,7 @@ Future<void> initializePlatformSpecific() async {
 }
 
 Future<void> initDatabaseSafely() async {
-  // Deshabilitado: no se inicializa SQLite local.
-  DatabaseHelper.disableLocalDatabase();
-  DatabaseService.disableLocalDatabase();
+  DatabaseHelper.enableLocalDatabase();
+  DatabaseService.enableLocalDatabase();
+  await DatabaseHelper.instance.database;
 }

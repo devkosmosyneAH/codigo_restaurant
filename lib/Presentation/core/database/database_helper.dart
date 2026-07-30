@@ -4,7 +4,6 @@ import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/database/database_tables.dart';
 import 'package:restaurant_app/Presentation/core/utils/pin_hasher.dart';
 import 'package:restaurant_app/Presentation/services/database_location_service.dart';
-import 'package:restaurant_app/Presentation/services/realtime_database_service.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 
@@ -21,11 +20,10 @@ class DatabaseHelper {
   DatabaseHelper._();
   static final DatabaseHelper instance = DatabaseHelper._();
 
+  /// SQLite is deliberately the source of truth.  Firebase is only reached
+  /// by the sync pipeline after a change has been persisted in `sync_log`.
   static bool enabled = true;
-  static DatabaseBackend backend = DatabaseBackend.firebaseRtdb;
-
-  final RealtimeDatabaseService _realtimeDatabaseService =
-      RealtimeDatabaseService();
+  static DatabaseBackend backend = DatabaseBackend.sqlite;
 
   Database? _database;
 
@@ -37,13 +35,13 @@ class DatabaseHelper {
     enabled = true;
   }
 
-  static DatabaseBackend get activeBackend => DatabaseBackend.firebaseRtdb;
+  static DatabaseBackend get activeBackend => DatabaseBackend.sqlite;
 
   void _assertEnabled() {
     if (!enabled) {
-      // La ruta principal del proyecto ahora es Realtime Database.
-      // SQLite queda deshabilitado para el flujo normal, pero no bloquea
-      // las operaciones que ya se ejecutan sobre la capa RTDB.
+      throw StateError(
+        'SQLite local esta deshabilitada. La aplicacion offline-first requiere SQLite activa.',
+      );
     }
   }
 
@@ -157,16 +155,19 @@ class DatabaseHelper {
       ('usr_cocina_01', 'Cocina', 'cocina', '4444'),
     ];
     for (final (id, nombre, rol, pin) in users) {
-      await db.insert('usuarios', {
-        'id': id,
-        'restaurant_id': AppConstants.defaultRestaurantId,
-        'nombre': nombre,
-        'pin': PinHasher.hash(pin), // nunca guardar en texto plano
-        'rol': rol,
-        'activo': 1,
-        'created_at': now,
-        'updated_at': now,
-      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await db.insert(
+          'usuarios',
+          {
+            'id': id,
+            'restaurant_id': AppConstants.defaultRestaurantId,
+            'nombre': nombre,
+            'pin': PinHasher.hash(pin), // nunca guardar en texto plano
+            'rol': rol,
+            'activo': 1,
+            'created_at': now,
+            'updated_at': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 
@@ -1180,169 +1181,6 @@ class DatabaseHelper {
 
   // ── Métodos CRUD Genéricos ─────────────────────────────────────────
 
-  String _normalizeDocumentId(
-    Map<String, dynamic> data, {
-    String? where,
-    List<Object?>? whereArgs,
-  }) {
-    final rawId = data['id']?.toString().trim();
-    if (rawId != null && rawId.isNotEmpty) return rawId;
-
-    final whereValue = _extractSingleWhereValue(where, whereArgs);
-    if (whereValue != null && whereValue.isNotEmpty)
-      return whereValue.toString();
-
-    return DateTime.now().microsecondsSinceEpoch.toString();
-  }
-
-  String? _extractSingleWhereValue(String? where, List<Object?>? whereArgs) {
-    if (where == null || whereArgs == null || whereArgs.isEmpty) return null;
-    final normalizedWhere = where.trim().toLowerCase();
-    if (normalizedWhere.startsWith('id = ?') ||
-        normalizedWhere.startsWith('id=?')) {
-      return whereArgs.first?.toString();
-    }
-    if (normalizedWhere.startsWith('restaurant_id = ?') ||
-        normalizedWhere.startsWith('restaurant_id=?')) {
-      return whereArgs.first?.toString();
-    }
-    return null;
-  }
-
-  String _resolveRestaurantId(
-    Map<String, dynamic> data, {
-    String? where,
-    List<Object?>? whereArgs,
-  }) {
-    final fromData = data['restaurant_id']?.toString().trim();
-    if (fromData != null && fromData.isNotEmpty) return fromData;
-
-    if (where != null && whereArgs != null) {
-      final normalizedWhere = where.toLowerCase();
-      final index = normalizedWhere.contains('restaurant_id') ? 0 : null;
-      if (index != null && whereArgs.isNotEmpty) {
-        final value = whereArgs[index]?.toString().trim();
-        if (value != null && value.isNotEmpty) return value;
-      }
-    }
-
-    return AppConstants.defaultRestaurantId;
-  }
-
-  bool _matchesCondition(
-    Map<String, dynamic> row,
-    String? where,
-    List<Object?>? whereArgs,
-  ) {
-    if (where == null || where.trim().isEmpty) return true;
-
-    final clauses = where
-        .split(' AND ')
-        .map((e) => e.trim())
-        .where((e) => e.isNotEmpty)
-        .toList();
-    var argIndex = 0;
-
-    for (final clause in clauses) {
-      final lower = clause.toLowerCase();
-      if (lower.contains(' = ?') || lower.contains('=?')) {
-        final parts = clause.split('=');
-        if (parts.length != 2) continue;
-        final column = parts.first.trim();
-        final value = whereArgs != null && argIndex < whereArgs.length
-            ? whereArgs[argIndex]
-            : null;
-        argIndex += 1;
-
-        if (column == 'restaurant_id') {
-          if (row['restaurant_id']?.toString() != value?.toString())
-            return false;
-          continue;
-        }
-        if (column == 'id') {
-          if (row['id']?.toString() != value?.toString()) return false;
-          continue;
-        }
-        if (column == 'activo') {
-          final expected = value is int
-              ? value
-              : int.tryParse(value.toString());
-          if ((row['activo'] is int
-                  ? row['activo'] as int
-                  : int.tryParse(row['activo'].toString())) !=
-              expected) {
-            return false;
-          }
-          continue;
-        }
-        if (column == 'estado') {
-          if (row['estado']?.toString() != value?.toString()) return false;
-          continue;
-        }
-        if (column == 'producto_id') {
-          if (row['producto_id']?.toString() != value?.toString()) return false;
-          continue;
-        }
-        if (column == 'pedido_id') {
-          if (row['pedido_id']?.toString() != value?.toString()) return false;
-          continue;
-        }
-        if (column == 'mesa_id') {
-          if (row['mesa_id']?.toString() != value?.toString()) return false;
-          continue;
-        }
-        if (column == 'categoria_id') {
-          if (row['categoria_id']?.toString() != value?.toString())
-            return false;
-          continue;
-        }
-      }
-    }
-
-    return true;
-  }
-
-  List<Map<String, dynamic>> _orderResults(
-    List<Map<String, dynamic>> rows,
-    String? orderBy,
-  ) {
-    if (orderBy == null || orderBy.trim().isEmpty) return rows;
-
-    final segments = orderBy
-        .split(',')
-        .map((segment) => segment.trim())
-        .where((segment) => segment.isNotEmpty)
-        .toList();
-
-    final sorted = List<Map<String, dynamic>>.from(rows);
-    sorted.sort((a, b) {
-      for (final segment in segments.reversed) {
-        final parts = segment.split(RegExp(r'\s+'));
-        final field = parts.first;
-        final descending =
-            parts.length > 1 && parts.last.toLowerCase() == 'desc';
-        final aValue = a[field];
-        final bValue = b[field];
-
-        final comparison = () {
-          if (aValue is num && bValue is num) {
-            return aValue.compareTo(bValue);
-          }
-          final aText = aValue?.toString() ?? '';
-          final bText = bValue?.toString() ?? '';
-          return aText.compareTo(bText);
-        }();
-
-        if (comparison != 0) {
-          return descending ? -comparison : comparison;
-        }
-      }
-      return 0;
-    });
-
-    return sorted;
-  }
-
   /// Inserta un registro en la tabla indicada.
   Future<int> insert(
     String table,
@@ -1350,16 +1188,12 @@ class DatabaseHelper {
     ConflictAlgorithm conflictAlgorithm = ConflictAlgorithm.replace,
   }) async {
     _assertEnabled();
-    final payload = Map<String, dynamic>.from(data);
-    payload['id'] ??= _normalizeDocumentId(payload);
-    final restaurantId = _resolveRestaurantId(payload);
-    await _realtimeDatabaseService.setDocument(
-      restaurantId: restaurantId,
-      collection: table,
-      documentId: payload['id'].toString(),
-      data: payload,
+    final db = await database;
+    return db.insert(
+      table,
+      data,
+      conflictAlgorithm: conflictAlgorithm,
     );
-    return 1;
   }
 
   /// Obtiene todos los registros de una tabla (con filtro opcional).
@@ -1371,30 +1205,14 @@ class DatabaseHelper {
     int? limit,
   }) async {
     _assertEnabled();
-    final restaurantId = _resolveRestaurantId(
-      const <String, dynamic>{},
+    final db = await database;
+    return db.query(
+      table,
       where: where,
       whereArgs: whereArgs,
+      orderBy: orderBy,
+      limit: limit,
     );
-    final documents = await _realtimeDatabaseService.listCollection(
-      restaurantId: restaurantId,
-      collection: table,
-    );
-
-    final rows = documents.entries.map((entry) {
-      final row = Map<String, dynamic>.from(entry.value);
-      row['id'] = row['id'] ?? entry.key;
-      return row;
-    }).toList();
-
-    final filtered = rows
-        .where((row) => _matchesCondition(row, where, whereArgs))
-        .toList();
-    final ordered = _orderResults(filtered, orderBy);
-    if (limit != null && limit > 0) {
-      return ordered.take(limit).toList();
-    }
-    return ordered;
   }
 
   /// Actualiza registros en una tabla.
@@ -1405,23 +1223,8 @@ class DatabaseHelper {
     List<Object?>? whereArgs,
   }) async {
     _assertEnabled();
-    final documentId = _normalizeDocumentId(
-      data,
-      where: where,
-      whereArgs: whereArgs,
-    );
-    final restaurantId = _resolveRestaurantId(
-      data,
-      where: where,
-      whereArgs: whereArgs,
-    );
-    await _realtimeDatabaseService.patchDocument(
-      restaurantId: restaurantId,
-      collection: table,
-      documentId: documentId,
-      data: data,
-    );
-    return 1;
+    final db = await database;
+    return db.update(table, data, where: where, whereArgs: whereArgs);
   }
 
   /// Elimina registros de una tabla.
@@ -1431,22 +1234,8 @@ class DatabaseHelper {
     List<Object?>? whereArgs,
   }) async {
     _assertEnabled();
-    final documentId = _normalizeDocumentId(
-      const <String, dynamic>{},
-      where: where,
-      whereArgs: whereArgs,
-    );
-    final restaurantId = _resolveRestaurantId(
-      const <String, dynamic>{},
-      where: where,
-      whereArgs: whereArgs,
-    );
-    await _realtimeDatabaseService.deleteDocument(
-      restaurantId: restaurantId,
-      collection: table,
-      documentId: documentId,
-    );
-    return 1;
+    final db = await database;
+    return db.delete(table, where: where, whereArgs: whereArgs);
   }
 
   /// Ejecuta una consulta SQL directa.
@@ -1455,48 +1244,8 @@ class DatabaseHelper {
     List<Object?>? arguments,
   ]) async {
     _assertEnabled();
-    final trimmed = sql.trim();
-    final lower = trimmed.toLowerCase();
-
-    if (lower.contains('select coalesce(max(') && lower.contains('from ')) {
-      final tableName = trimmed
-          .split(RegExp(r'\bfrom\b'))[1]
-          .split(RegExp(r'\bwhere\b'))[0]
-          .trim();
-      final rows = await query(
-        tableName,
-        where: lower.contains('where')
-            ? trimmed.split(RegExp(r'\bwhere\b'))[1].trim()
-            : null,
-        whereArgs: arguments,
-      );
-      final numericValues = rows
-          .map((row) => row['numero'] is num ? row['numero'] as num : null)
-          .whereType<num>()
-          .toList();
-      final next = numericValues.isEmpty
-          ? 1
-          : numericValues.reduce((a, b) => a > b ? a : b) + 1;
-      return [
-        <String, dynamic>{'next_num': next},
-      ];
-    }
-
-    if (lower.startsWith('select * from')) {
-      final tableName = trimmed
-          .split(RegExp(r'\bfrom\b'))[1]
-          .split(RegExp(r'\bwhere\b'))[0]
-          .trim();
-      final whereClause = lower.contains('where')
-          ? trimmed
-                .split(RegExp(r'\bwhere\b'))[1]
-                .split(RegExp(r'\border by\b'))[0]
-                .trim()
-          : null;
-      return query(tableName, where: whereClause, whereArgs: arguments);
-    }
-
-    return const <Map<String, dynamic>>[];
+    final db = await database;
+    return db.rawQuery(sql, arguments);
   }
 
   /// Ejecuta una operación dentro de una transacción.

@@ -70,7 +70,6 @@ import 'package:restaurant_app/Presentation/services/facturacion/sri_service.dar
 import 'package:restaurant_app/Presentation/services/firebase_auth_service.dart';
 import 'package:restaurant_app/Presentation/services/menu/drive_image_sync_queue_service.dart';
 import 'package:restaurant_app/Presentation/services/menu/drive_menu_connection_service_web.dart';
-import 'package:restaurant_app/Presentation/services/menu/menu_realtime_database_service.dart';
 import 'package:restaurant_app/Presentation/services/menu/menu_sync_diagnostics_service.dart';
 
 /// Service Locator global.
@@ -223,15 +222,11 @@ void _initMenu() {
     () =>
         DriveMenuConnectionService(datasource: sl(), diagnosticsService: sl()),
   );
-  sl.registerLazySingleton<MenuRealtimeDatabaseService>(
-    () => MenuRealtimeDatabaseService(diagnosticsService: sl()),
-  );
   sl.registerLazySingleton<DriveImageSyncQueueService>(
     () => DriveImageSyncQueueService(
       syncManager: sl(),
       driveService: sl(),
       dbHelper: sl(),
-      menuRealtimeDb: sl(),
       tenantContext: sl(),
       diagnosticsService: sl(),
     ),
@@ -243,7 +238,6 @@ void _initMenu() {
       dbHelper: sl(),
       syncManager: sl(),
       tenantContext: sl(),
-      menuRealtimeDb: sl(),
     ),
   );
   // Repositories

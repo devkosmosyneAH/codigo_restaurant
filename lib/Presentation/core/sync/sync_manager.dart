@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/database/database_helper.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 import 'package:uuid/uuid.dart';
@@ -18,9 +17,10 @@ class SyncManager {
   static const _uuid = Uuid();
   final StreamController<void> _pendingChangesController =
       StreamController<void>.broadcast();
+  Future<void> _registrationTail = Future<void>.value();
 
   SyncManager({DatabaseHelper? dbHelper})
-    : _dbHelper = dbHelper ?? DatabaseHelper.instance;
+      : _dbHelper = dbHelper ?? DatabaseHelper.instance;
 
   /// Emite un evento cada vez que cambia el estado de pendientes en sync_log.
   Stream<void> get onPendingChanges => _pendingChangesController.stream;
@@ -32,15 +32,44 @@ class SyncManager {
     required SyncOperation operacion,
     required String restaurantId,
     Map<String, dynamic>? datos,
+  }) {
+    // Serialize queue read/merge/write operations. Without this, two rapid
+    // edits can both observe no pending record and race into separate writes.
+    final queued = _registrationTail.then<void>(
+      (_) => _registrarOperacion(
+        tabla: tabla,
+        registroId: registroId,
+        operacion: operacion,
+        restaurantId: restaurantId,
+        datos: datos,
+      ),
+    );
+    _registrationTail = queued.onError((_, _) {});
+    return queued;
+  }
+
+  Future<void> _registrarOperacion({
+    required String tabla,
+    required String registroId,
+    required SyncOperation operacion,
+    required String restaurantId,
+    Map<String, dynamic>? datos,
   }) async {
     final now = DateTime.now();
     final nowIso = now.toIso8601String();
+    final localSnapshot = await _loadCurrentLocalState(
+      tabla: tabla,
+      registroId: registroId,
+      restaurantId: restaurantId,
+    );
     final normalizedDatos = _normalizeDatos(
       tabla: tabla,
       registroId: registroId,
       operacion: operacion,
       restaurantId: restaurantId,
-      datos: datos,
+      // SQLite is authoritative. Explicit data is only a fallback for an
+      // already deleted row or an auxiliary legacy table.
+      datos: localSnapshot ?? datos,
       nowIso: nowIso,
     );
 
@@ -56,45 +85,39 @@ class SyncManager {
     if (existentes.isNotEmpty) {
       final previo = SyncRecord.fromMap(existentes.first);
 
-      // Compatibilidad: inserts repetidos se mantienen como eventos separados.
-      if (!(previo.operacion == SyncOperation.insert &&
-          operacion == SyncOperation.insert)) {
-        final operacionFusionada = _mergeOperacion(previo.operacion, operacion);
+      final operacionFusionada = _mergeOperacion(previo.operacion, operacion);
 
-        // Insert seguido de delete => no hay cambio neto para enviar.
-        if (operacionFusionada == null) {
-          await _dbHelper.delete(
-            'sync_log',
-            where: 'id = ?',
-            whereArgs: [previo.id],
-          );
-          _notifyPendingChanged();
-          return;
-        }
-
-        final datosFusionados = _mergeDatos(
-          previo.datos,
-          normalizedDatos,
-          operacionFusionada,
-        );
-
-        await _dbHelper.update(
+      // Insert seguido de delete => no hay cambio neto para enviar.
+      if (operacionFusionada == null) {
+        await _dbHelper.delete(
           'sync_log',
-          {
-            'operacion': operacionFusionada.name,
-            'datos': datosFusionados == null
-                ? null
-                : jsonEncode(datosFusionados),
-            'intentos': 0,
-            'updated_at': nowIso,
-            'restaurant_id': restaurantId,
-          },
           where: 'id = ?',
           whereArgs: [previo.id],
         );
         _notifyPendingChanged();
         return;
       }
+
+      final datosFusionados = _mergeDatos(
+        previo.datos,
+        normalizedDatos,
+        operacionFusionada,
+      );
+
+      await _dbHelper.update(
+        'sync_log',
+        {
+          'operacion': operacionFusionada.name,
+          'datos': datosFusionados == null ? null : jsonEncode(datosFusionados),
+          'intentos': 0,
+          'updated_at': nowIso,
+          'restaurant_id': restaurantId,
+        },
+        where: 'id = ?',
+        whereArgs: [previo.id],
+      );
+      _notifyPendingChanged();
+      return;
     }
 
     final record = SyncRecord(
@@ -180,17 +203,6 @@ class SyncManager {
 
   /// Incrementa el contador de intentos de un registro.
   Future<void> incrementarIntentos(String id) async {
-    try {
-      await _dbHelper.rawQuery(
-        'UPDATE sync_log SET intentos = intentos + 1, '
-        "updated_at = datetime('now') WHERE id = ?",
-        [id],
-      );
-      return;
-    } catch (_) {
-      // Fallback para implementaciones donde UPDATE via rawQuery no aplique.
-    }
-
     final rows = await _dbHelper.query(
       'sync_log',
       where: 'id = ?',
@@ -226,13 +238,13 @@ class SyncManager {
     );
 
     final now = DateTime.now();
-    final maxIntentos = maxRetries ?? AppConstants.maxSyncRetries;
 
     final due = rows
         .map(SyncRecord.fromMap)
         .where((record) {
           if (forzar) return true;
-          if (record.intentos >= maxIntentos) return false;
+          // A failed write must remain retryable. A terminal retry cap leaves
+          // valid local changes stranded forever.
           return _isRetryDue(record, now);
         })
         .take(limit)
@@ -351,7 +363,42 @@ class SyncManager {
   ) {
     if (finalOperation == SyncOperation.delete) return null;
 
-    return {...?oldData, ...?newData};
+    // `newData` comes from a complete post-write SQLite read. Keeping fields
+    // from an older payload would resurrect values intentionally cleared.
+    return newData ?? oldData;
+  }
+
+  Future<Map<String, dynamic>?> _loadCurrentLocalState({
+    required String tabla,
+    required String registroId,
+    required String restaurantId,
+  }) async {
+    try {
+      if (tabla == 'clientes') {
+        final separator = registroId.indexOf(':');
+        final cedula =
+            separator < 0 ? registroId : registroId.substring(separator + 1);
+        final rows = await _dbHelper.query(
+          tabla,
+          where: 'restaurant_id = ? AND cedula = ?',
+          whereArgs: [restaurantId, cedula],
+          limit: 1,
+        );
+        return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+      }
+
+      final rows = await _dbHelper.query(
+        tabla,
+        where: tabla == 'public_config' ? 'restaurant_id = ?' : 'id = ?',
+        whereArgs: [tabla == 'public_config' ? restaurantId : registroId],
+        limit: 1,
+      );
+      return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+    } catch (_) {
+      // The queue also carries auxiliary/legacy tables. Their explicit payload
+      // remains a safe fallback when no normal row lookup exists.
+      return null;
+    }
   }
 
   bool _isRetryDue(SyncRecord record, DateTime now) {

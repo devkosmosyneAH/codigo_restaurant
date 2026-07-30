@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:restaurant_app/Presentation/Models/menu/categoria_model.dart';
 import 'package:restaurant_app/Presentation/Models/menu/producto_model.dart';
@@ -10,7 +8,6 @@ import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/Presentation/data/menu/menu_local_datasource.dart';
-import 'package:restaurant_app/Presentation/services/menu/menu_realtime_database_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' show ConflictAlgorithm;
 
 /// Implementación del datasource local de Menú usando SQLite.
@@ -18,17 +15,14 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
   final DatabaseHelper _dbHelper;
   final SyncManager _syncManager;
   final TenantContext _tenantContext;
-  final MenuRealtimeDatabaseService _menuRealtimeDb;
 
   MenuLocalDataSourceImpl({
     required DatabaseHelper dbHelper,
     required SyncManager syncManager,
     required TenantContext tenantContext,
-    required MenuRealtimeDatabaseService menuRealtimeDb,
-  }) : _dbHelper = dbHelper,
-       _syncManager = syncManager,
-       _tenantContext = tenantContext,
-       _menuRealtimeDb = menuRealtimeDb;
+  })  : _dbHelper = dbHelper,
+        _syncManager = syncManager,
+        _tenantContext = tenantContext;
 
   static const _tableCategorias = 'categorias';
   static const _tableProductos = 'productos';
@@ -155,19 +149,16 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         orderBy: 'nombre ASC',
       );
 
-      final productoIds = results
-          .map((row) => row['id'] as String)
-          .toList(growable: false);
+      final productoIds =
+          results.map((row) => row['id'] as String).toList(growable: false);
       final variantesByProducto = await _getVariantesByProductoIds(productoIds);
 
-      return results
-          .map((row) {
-            final productoId = row['id'] as String;
-            final variantes =
-                variantesByProducto[productoId] ?? const <VarianteModel>[];
-            return ProductoModel.fromMap(row, variantes: variantes);
-          })
-          .toList(growable: false);
+      return results.map((row) {
+        final productoId = row['id'] as String;
+        final variantes =
+            variantesByProducto[productoId] ?? const <VarianteModel>[];
+        return ProductoModel.fromMap(row, variantes: variantes);
+      }).toList(growable: false);
     } catch (e) {
       throw DatabaseException(message: 'Error al obtener productos: $e');
     }
@@ -185,19 +176,16 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         orderBy: 'nombre ASC',
       );
 
-      final productoIds = results
-          .map((row) => row['id'] as String)
-          .toList(growable: false);
+      final productoIds =
+          results.map((row) => row['id'] as String).toList(growable: false);
       final variantesByProducto = await _getVariantesByProductoIds(productoIds);
 
-      return results
-          .map((row) {
-            final productoId = row['id'] as String;
-            final variantes =
-                variantesByProducto[productoId] ?? const <VarianteModel>[];
-            return ProductoModel.fromMap(row, variantes: variantes);
-          })
-          .toList(growable: false);
+      return results.map((row) {
+        final productoId = row['id'] as String;
+        final variantes =
+            variantesByProducto[productoId] ?? const <VarianteModel>[];
+        return ProductoModel.fromMap(row, variantes: variantes);
+      }).toList(growable: false);
     } catch (e) {
       throw DatabaseException(
         message: 'Error al obtener productos de categoría: $e',
@@ -238,14 +226,15 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         restaurantId: producto.restaurantId,
         datos: data,
       );
-
-      unawaited(
-        _menuRealtimeDb.upsertProducto(
+      for (final varianteData in producto.variantesToMapList()) {
+        await _syncManager.registrarOperacion(
+          tabla: _tableVariantes,
+          registroId: varianteData['id'].toString(),
+          operacion: SyncOperation.insert,
           restaurantId: producto.restaurantId,
-          productoId: producto.id,
-          data: data,
-        ),
-      );
+          datos: varianteData,
+        );
+      }
     } catch (e) {
       throw DatabaseException(message: 'Error al crear producto: $e');
     }
@@ -256,6 +245,20 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
     try {
       final data = producto.toMap();
       data['updated_at'] = DateTime.now().toIso8601String();
+      final previousVariants = await _dbHelper.query(
+        _tableVariantes,
+        where: 'producto_id = ?',
+        whereArgs: [producto.id],
+      );
+      final previousIds = previousVariants
+          .map((row) => row['id']?.toString())
+          .whereType<String>()
+          .toSet();
+      final currentVariants = producto.variantesToMapList();
+      final currentIds = currentVariants
+          .map((row) => row['id']?.toString())
+          .whereType<String>()
+          .toSet();
 
       await _dbHelper.transaction((txn) async {
         // 1. Actualizar campos del producto
@@ -275,7 +278,7 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         );
 
         // 3. Re-insertar las variantes actuales (replace si ya existe el id)
-        for (final vm in producto.variantesToMapList()) {
+        for (final vm in currentVariants) {
           await txn.insert(
             _tableVariantes,
             vm,
@@ -290,14 +293,26 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         restaurantId: producto.restaurantId,
         datos: data,
       );
-
-      unawaited(
-        _menuRealtimeDb.upsertProducto(
+      for (final oldId in previousIds.difference(currentIds)) {
+        await _syncManager.registrarOperacion(
+          tabla: _tableVariantes,
+          registroId: oldId,
+          operacion: SyncOperation.delete,
           restaurantId: producto.restaurantId,
-          productoId: producto.id,
-          data: data,
-        ),
-      );
+        );
+      }
+      for (final varianteData in currentVariants) {
+        final varianteId = varianteData['id'].toString();
+        await _syncManager.registrarOperacion(
+          tabla: _tableVariantes,
+          registroId: varianteId,
+          operacion: previousIds.contains(varianteId)
+              ? SyncOperation.update
+              : SyncOperation.insert,
+          restaurantId: producto.restaurantId,
+          datos: varianteData,
+        );
+      }
     } catch (e) {
       throw DatabaseException(message: 'Error al actualizar producto: $e');
     }
@@ -309,6 +324,16 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
       debugPrint('MENU_DATASOURCE_DELETE [1] Entrando al datasource');
       debugPrint('MENU_DATASOURCE_DELETE [2] Producto id=$id');
       debugPrint('MENU_DATASOURCE_DELETE [3] Iniciando transacción de borrado');
+
+      final variantRows = await _dbHelper.query(
+        _tableVariantes,
+        where: 'producto_id = ?',
+        whereArgs: [id],
+      );
+      final variantIds = variantRows
+          .map((row) => row['id']?.toString())
+          .whereType<String>()
+          .toList();
 
       // Soft-delete también las variantes
       await _dbHelper.transaction((txn) async {
@@ -338,20 +363,15 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         operacion: SyncOperation.delete,
         restaurantId: _tenantContext.restaurantId,
       );
-      debugPrint('MENU_DATASOURCE_DELETE [8] Operación registrada');
-
-      debugPrint(
-        'MENU_DATASOURCE_DELETE [9] Invocando servicio de Realtime Database',
-      );
-      unawaited(
-        _menuRealtimeDb.deleteProducto(
+      for (final variantId in variantIds) {
+        await _syncManager.registrarOperacion(
+          tabla: _tableVariantes,
+          registroId: variantId,
+          operacion: SyncOperation.delete,
           restaurantId: _tenantContext.restaurantId,
-          productoId: id,
-        ),
-      );
-      debugPrint(
-        'MENU_DATASOURCE_DELETE [10] Llamada a Realtime Database disparada',
-      );
+        );
+      }
+      debugPrint('MENU_DATASOURCE_DELETE [8] Operación registrada');
     } catch (e, s) {
       debugPrint('MENU_DATASOURCE_DELETE ERROR');
       debugPrint(e.toString());
@@ -371,12 +391,11 @@ class MenuLocalDataSourceImpl implements MenuLocalDataSource {
         whereArgs: [id],
       );
 
-      unawaited(
-        _menuRealtimeDb.patchProducto(
-          restaurantId: _tenantContext.restaurantId,
-          productoId: id,
-          data: {'disponible': disponible ? 1 : 0, 'updated_at': updatedAt},
-        ),
+      await _syncManager.registrarOperacion(
+        tabla: _tableProductos,
+        registroId: id,
+        operacion: SyncOperation.update,
+        restaurantId: _tenantContext.restaurantId,
       );
     } catch (e) {
       throw DatabaseException(message: 'Error al cambiar disponibilidad: $e');

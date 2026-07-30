@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:restaurant_app/Presentation/core/config/app_environment.dart';
-import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 
 abstract class SyncCloudBackend {
@@ -40,7 +39,7 @@ abstract class SyncCloudBackend {
 
 class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
   FirebaseRealtimeSyncCloudBackend({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+      : _httpClient = httpClient ?? http.Client();
 
   static const Duration _requestTimeout = Duration(seconds: 12);
   static const Map<String, String> _jsonHeaders = {
@@ -82,11 +81,11 @@ class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
     final payload = _sanitizePayload(data);
     final response = merge
         ? await _httpClient
-              .patch(uri, headers: _jsonHeaders, body: jsonEncode(payload))
-              .timeout(_requestTimeout)
+            .patch(uri, headers: _jsonHeaders, body: jsonEncode(payload))
+            .timeout(_requestTimeout)
         : await _httpClient
-              .put(uri, headers: _jsonHeaders, body: jsonEncode(payload))
-              .timeout(_requestTimeout);
+            .put(uri, headers: _jsonHeaders, body: jsonEncode(payload))
+            .timeout(_requestTimeout);
 
     _ensureSuccess(response, operation: 'setDocument', uri: uri);
   }
@@ -276,8 +275,7 @@ class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
       }
 
       final lowerKey = key.toLowerCase();
-      final isImageField =
-          lowerKey.contains('imagen') ||
+      final isImageField = lowerKey.contains('imagen') ||
           lowerKey.contains('image') ||
           lowerKey.contains('drive');
 
@@ -359,8 +357,8 @@ class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
 /// Servicio para enviar operaciones del sync_log a Realtime Database.
 class SyncCloudService {
   SyncCloudService({SyncCloudBackend? backend, bool? enforcePlatformSupport})
-    : _backend = backend ?? FirebaseRealtimeSyncCloudBackend(),
-      _enforcePlatformSupport = enforcePlatformSupport ?? backend == null;
+      : _backend = backend ?? FirebaseRealtimeSyncCloudBackend(),
+        _enforcePlatformSupport = enforcePlatformSupport ?? backend == null;
 
   final SyncCloudBackend _backend;
   final bool _enforcePlatformSupport;
@@ -404,13 +402,25 @@ class SyncCloudService {
   Future<void> pushRecord(SyncRecord record) async {
     await ensureAvailable();
 
-    final restaurantId = record.restaurantId.isNotEmpty
-        ? record.restaurantId
-        : AppConstants.defaultRestaurantId;
+    final restaurantId = record.restaurantId.trim();
+    if (restaurantId.isEmpty || record.registroId.trim().isEmpty) {
+      throw ArgumentError(
+        'sync_log invalido: restaurant_id y registro_id son obligatorios.',
+      );
+    }
 
     switch (record.operacion) {
       case SyncOperation.insert:
+        // PUT/set creates an exact replica for a new document.
+        await _backend.setDocument(
+          restaurantId: restaurantId,
+          collection: record.tabla,
+          documentId: record.registroId,
+          data: _buildPayload(record),
+          merge: false,
+        );
       case SyncOperation.update:
+        // PATCH/update changes only the current SQLite snapshot fields.
         await _backend.setDocument(
           restaurantId: restaurantId,
           collection: record.tabla,
@@ -426,17 +436,22 @@ class SyncCloudService {
         );
     }
 
-    await _backend.writeAudit(
-      recordId: record.id,
-      data: {
-        'tabla': record.tabla,
-        'registro_id': record.registroId,
-        'restaurant_id': restaurantId,
-        'operacion': record.operacion.name,
-        'created_at_local': record.createdAt.toIso8601String(),
-        'synced_at': _backend.serverTimestamp(),
-      },
-    );
+    // Audit telemetry must never turn an acknowledged data write into a retry.
+    try {
+      await _backend.writeAudit(
+        recordId: record.id,
+        data: {
+          'tabla': record.tabla,
+          'registro_id': record.registroId,
+          'restaurant_id': restaurantId,
+          'operacion': record.operacion.name,
+          'created_at_local': record.createdAt.toIso8601String(),
+          'synced_at': _backend.serverTimestamp(),
+        },
+      );
+    } catch (_) {
+      // The operation itself has already been confirmed by Realtime Database.
+    }
   }
 
   Map<String, dynamic> _buildPayload(SyncRecord record) {

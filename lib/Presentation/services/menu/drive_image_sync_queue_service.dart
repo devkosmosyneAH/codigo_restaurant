@@ -10,7 +10,6 @@ import 'package:restaurant_app/Presentation/core/sync/sync_manager.dart';
 import 'package:restaurant_app/Presentation/core/sync/sync_record.dart';
 import 'package:restaurant_app/Presentation/core/tenant/tenant_context.dart';
 import 'package:restaurant_app/Presentation/services/menu/drive_menu_connection_service_web.dart';
-import 'package:restaurant_app/Presentation/services/menu/menu_realtime_database_service.dart';
 import 'package:restaurant_app/Presentation/services/menu/menu_sync_diagnostics_service.dart';
 
 class DriveQueueProcessResult {
@@ -49,7 +48,6 @@ class DriveImageSyncQueueService {
   final SyncManager _syncManager;
   final DriveMenuConnectionService _driveService;
   final DatabaseHelper _dbHelper;
-  final MenuRealtimeDatabaseService _menuRealtimeDb;
   final TenantContext _tenantContext;
   final MenuSyncDiagnosticsService? _diagnosticsService;
 
@@ -59,15 +57,13 @@ class DriveImageSyncQueueService {
     required SyncManager syncManager,
     required DriveMenuConnectionService driveService,
     required DatabaseHelper dbHelper,
-    required MenuRealtimeDatabaseService menuRealtimeDb,
     required TenantContext tenantContext,
     MenuSyncDiagnosticsService? diagnosticsService,
-  }) : _syncManager = syncManager,
-       _driveService = driveService,
-       _dbHelper = dbHelper,
-       _menuRealtimeDb = menuRealtimeDb,
-       _tenantContext = tenantContext,
-       _diagnosticsService = diagnosticsService;
+  })  : _syncManager = syncManager,
+        _driveService = driveService,
+        _dbHelper = dbHelper,
+        _tenantContext = tenantContext,
+        _diagnosticsService = diagnosticsService;
 
   Future<int> countPendingOperations() async {
     final pending = await _syncManager.obtenerPendientesPorTabla(
@@ -83,7 +79,8 @@ class DriveImageSyncQueueService {
     required String fileId,
   }) async {
     try {
-      debugPrint('MENU_DRIVE_QUEUE [1] Encolando eliminación fileId=$fileId restaurantId=$restaurantId');
+      debugPrint(
+          'MENU_DRIVE_QUEUE [1] Encolando eliminación fileId=$fileId restaurantId=$restaurantId');
       final normalizedFileId = fileId.trim();
       if (normalizedFileId.isEmpty) {
         debugPrint('MENU_DRIVE_QUEUE [2] fileId vacío, se omite encolar');
@@ -184,8 +181,8 @@ class DriveImageSyncQueueService {
         _imageTempPathKey: tempImagePath,
         'previous_drive_file_id':
             (previousFileId == null || previousFileId.isEmpty)
-            ? null
-            : previousFileId,
+                ? null
+                : previousFileId,
       },
     );
 
@@ -201,7 +198,8 @@ class DriveImageSyncQueueService {
       final pending = await _syncManager.obtenerPendientesPorTabla(
         localQueueTable,
       );
-      debugPrint('MENU_DRIVE_QUEUE [8] Pendientes encontrados=${pending.length}');
+      debugPrint(
+          'MENU_DRIVE_QUEUE [8] Pendientes encontrados=${pending.length}');
       _diagnosticsService?.updatePendingQueueCount(pending.length);
 
       if (pending.isEmpty) {
@@ -216,7 +214,8 @@ class DriveImageSyncQueueService {
         );
       }
 
-      debugPrint('MENU_DRIVE_QUEUE [10] Restaurando sesión Drive silenciosamente');
+      debugPrint(
+          'MENU_DRIVE_QUEUE [10] Restaurando sesión Drive silenciosamente');
       var signedIn = await _driveService.restoreSessionSilently();
       if (!signedIn && allowInteractiveSignIn) {
         debugPrint('MENU_DRIVE_QUEUE [11] Intentando signIn interactivo');
@@ -242,7 +241,8 @@ class DriveImageSyncQueueService {
         );
       }
 
-      debugPrint('MENU_DRIVE_QUEUE [13] Sesión Drive activa, procesando registros');
+      debugPrint(
+          'MENU_DRIVE_QUEUE [13] Sesión Drive activa, procesando registros');
 
       var processed = 0;
       var succeeded = 0;
@@ -270,7 +270,8 @@ class DriveImageSyncQueueService {
 
       final deferred = pending.length - processed;
       await countPendingOperations();
-      await _runAutoCleanupIfDue(allowInteractiveSignIn: allowInteractiveSignIn);
+      await _runAutoCleanupIfDue(
+          allowInteractiveSignIn: allowInteractiveSignIn);
 
       return DriveQueueProcessResult(
         totalQueued: pending.length,
@@ -402,15 +403,15 @@ class DriveImageSyncQueueService {
 
     final restaurantId =
         (data['restaurant_id']?.toString().trim().isNotEmpty ?? false)
-        ? data['restaurant_id'].toString().trim()
-        : record.restaurantId.trim();
+            ? data['restaurant_id'].toString().trim()
+            : record.restaurantId.trim();
     final userId = (data['user_id']?.toString().trim().isNotEmpty ?? false)
         ? data['user_id'].toString().trim()
         : 'system';
     final productoId = data['producto_id']?.toString().trim() ?? '';
     final mimeType = data['mime_type']?.toString().trim() ?? '';
-    final fileExtension = (data['file_extension']?.toString().trim() ?? 'jpg')
-        .toLowerCase();
+    final fileExtension =
+        (data['file_extension']?.toString().trim() ?? 'jpg').toLowerCase();
     final tempImagePath = data[_imageTempPathKey]?.toString().trim() ?? '';
     final encodedBytes = data[_legacyImageBase64Key]?.toString().trim() ?? '';
 
@@ -552,14 +553,6 @@ class DriveImageSyncQueueService {
       operacion: SyncOperation.update,
       restaurantId: restaurantId,
       datos: {'id': productoId, 'restaurant_id': restaurantId, ...patch},
-    );
-
-    unawaited(
-      _menuRealtimeDb.patchProducto(
-        restaurantId: restaurantId,
-        productoId: productoId,
-        data: patch,
-      ),
     );
 
     return true;
