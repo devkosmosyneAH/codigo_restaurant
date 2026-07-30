@@ -13,6 +13,7 @@ import 'package:restaurant_app/Presentation/core/firebase/firebase_initializer.d
 import 'package:restaurant_app/Presentation/core/theme/app_theme.dart';
 import 'package:restaurant_app/Presentation/providers/auth/activation_provider.dart';
 import 'package:restaurant_app/Presentation/providers/auth/auth_provider.dart';
+import 'package:restaurant_app/Presentation/services/google_auth_service.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -20,6 +21,7 @@ Future<void> main() async {
   return runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      await GoogleAuthService.instance.restoreSession();
 
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.dumpErrorToConsole(details);
