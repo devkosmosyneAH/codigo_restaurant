@@ -21,15 +21,17 @@ class HybridSyncOrchestrator {
     required TenantContext tenantContext,
     Connectivity? connectivity,
     Future<void> Function()? beforePushHook,
-  }) : _syncManager = syncManager,
-       _cloudService = cloudService,
-       _dbHelper = dbHelper,
-       _tenantContext = tenantContext,
-       _connectivity = connectivity ?? Connectivity(),
-       _beforePushHook = beforePushHook;
+  })  : _syncManager = syncManager,
+        _cloudService = cloudService,
+        _dbHelper = dbHelper,
+        _tenantContext = tenantContext,
+        _connectivity = connectivity ?? Connectivity(),
+        _beforePushHook = beforePushHook;
 
   static const Duration _pulseInterval = Duration(seconds: 30);
   static const Duration _localChangeDebounce = Duration(milliseconds: 700);
+  static const Duration _tombstoneRetention = Duration(days: 30);
+  static const Duration _tombstonePurgeInterval = Duration(hours: 12);
   static const int _pushBatchSize = 100;
 
   static const List<String> _realtimeTables = [
@@ -67,6 +69,7 @@ class HybridSyncOrchestrator {
   bool _online = false;
   bool _syncInProgress = false;
   bool _cloudSyncEnabled = true;
+  DateTime? _lastTombstonePurgeAt;
 
   /// Fuerza un ciclo de sincronizacion en este momento.
   ///
@@ -143,6 +146,7 @@ class HybridSyncOrchestrator {
       final tenantId = _tenantContext.restaurantId.trim();
       if (tenantId.isNotEmpty) {
         await _pullRemoteChanges(tenantId: tenantId);
+        await _purgeExpiredTombstones(tenantId: tenantId);
       }
 
       final beforePushHook = _beforePushHook;
@@ -292,6 +296,18 @@ class HybridSyncOrchestrator {
       }
     }
 
+    if (_isTombstone(rawData)) {
+      await _applyRemoteTombstone(
+        table: table,
+        tenantId: tenantId,
+        docId: docId,
+        registroId: registroId,
+        payload: payload,
+        rawData: rawData,
+      );
+      return;
+    }
+
     final local = await _loadLocalRow(
       table: table,
       tenantId: tenantId,
@@ -326,6 +342,98 @@ class HybridSyncOrchestrator {
       restaurantId: tenantId,
       syncRecordId: _extractRemoteSyncRecordId(rawData),
     );
+  }
+
+  Future<void> _applyRemoteTombstone({
+    required String table,
+    required String tenantId,
+    required String docId,
+    required String registroId,
+    required Map<String, dynamic> payload,
+    required Map<String, dynamic> rawData,
+  }) async {
+    final local = await _loadLocalRow(
+      table: table,
+      tenantId: tenantId,
+      docId: docId,
+      payload: payload,
+    );
+    final deletedAt = _parseDateTime(rawData['deleted_at']);
+    final localUpdatedAt = local == null
+        ? null
+        : _parseDateTime(local['updated_at']) ??
+            _parseDateTime(local['created_at']);
+    if (deletedAt != null &&
+        localUpdatedAt != null &&
+        deletedAt.isBefore(localUpdatedAt)) {
+      return;
+    }
+
+    final lookup = await _lookupForRow(
+      table: table,
+      tenantId: tenantId,
+      docId: docId,
+      payload: payload,
+    );
+    if (lookup != null && local != null) {
+      final columns = await _getTableColumns(table);
+      if (columns.contains('activo')) {
+        await _dbHelper.update(
+          table,
+          {
+            'activo': 0,
+            if (columns.contains('updated_at'))
+              'updated_at': (deletedAt ?? DateTime.now()).toIso8601String(),
+          },
+          where: lookup.where,
+          whereArgs: lookup.whereArgs,
+        );
+      } else {
+        await _dbHelper.delete(
+          table,
+          where: lookup.where,
+          whereArgs: lookup.whereArgs,
+        );
+      }
+    }
+    await _syncManager.registrarAuditoria(
+      direction: 'pull',
+      status: 'deleted',
+      tabla: table,
+      registroId: registroId,
+      restaurantId: tenantId,
+      syncRecordId: _extractRemoteSyncRecordId(rawData),
+    );
+  }
+
+  Future<void> _purgeExpiredTombstones({required String tenantId}) async {
+    final lastPurge = _lastTombstonePurgeAt;
+    if (lastPurge != null &&
+        DateTime.now().difference(lastPurge) < _tombstonePurgeInterval) {
+      return;
+    }
+    final cutoff = DateTime.now().toUtc().subtract(_tombstoneRetention);
+    for (final table in _realtimeTables) {
+      try {
+        final documents = await _cloudService.listCollection(
+          restaurantId: tenantId,
+          collection: table,
+        );
+        for (final entry in documents.entries) {
+          final deletedAt = _parseDateTime(entry.value['deleted_at']);
+          if (deletedAt != null && deletedAt.isBefore(cutoff)) {
+            await _cloudService.purgeDocument(
+              restaurantId: tenantId,
+              collection: table,
+              documentId: entry.key,
+            );
+          }
+        }
+      } catch (_) {
+        // Purge is best-effort; failures must not block operational sync.
+      }
+    }
+    _lastTombstonePurgeAt = DateTime.now();
   }
 
   Future<Map<String, dynamic>?> _loadLocalRow({
@@ -370,8 +478,8 @@ class HybridSyncOrchestrator {
       data['nombre'] = (data['nombre']?.toString().trim().isNotEmpty ?? false)
           ? data['nombre']
           : (data['nombres']?.toString().trim().isNotEmpty ?? false)
-          ? data['nombres']
-          : 'Cliente';
+              ? data['nombres']
+              : 'Cliente';
       data['nombres'] = (data['nombres']?.toString().trim().isNotEmpty ?? false)
           ? data['nombres']
           : data['nombre'];
@@ -485,17 +593,20 @@ class HybridSyncOrchestrator {
     return payload;
   }
 
+  bool _isTombstone(Map<String, dynamic> rawData) {
+    final value = rawData['deleted_at'];
+    return value is String && DateTime.tryParse(value) != null;
+  }
+
   bool _shouldApplyRemote({
     required Map<String, dynamic>? local,
     required Map<String, dynamic> remotePayload,
   }) {
     if (local == null) return true;
 
-    final remoteTs =
-        _parseDateTime(remotePayload['updated_at']) ??
+    final remoteTs = _parseDateTime(remotePayload['updated_at']) ??
         _parseDateTime(remotePayload['created_at']);
-    final localTs =
-        _parseDateTime(local['updated_at']) ??
+    final localTs = _parseDateTime(local['updated_at']) ??
         _parseDateTime(local['created_at']);
 
     if (remoteTs == null || localTs == null) {

@@ -206,7 +206,8 @@ class FirebaseRealtimeSyncCloudBackend implements SyncCloudBackend {
       if (_localOnlyKeys.contains(key)) continue;
 
       final value = entry.value;
-      if (value == null) continue;
+      // Firebase PATCH uses null to remove a previous tombstone field.
+      if (value == null && key != 'deleted_at') continue;
 
       final sanitized = _sanitizeValue(key, value);
       if (identical(sanitized, _dropValue)) continue;
@@ -399,6 +400,20 @@ class SyncCloudService {
     );
   }
 
+  /// Removes an expired tombstone only after the retention window elapsed.
+  Future<void> purgeDocument({
+    required String restaurantId,
+    required String collection,
+    required String documentId,
+  }) async {
+    await ensureAvailable();
+    await _backend.deleteDocument(
+      restaurantId: restaurantId,
+      collection: collection,
+      documentId: documentId,
+    );
+  }
+
   Future<void> pushRecord(SyncRecord record) async {
     await ensureAvailable();
 
@@ -429,10 +444,14 @@ class SyncCloudService {
           merge: true,
         );
       case SyncOperation.delete:
-        await _backend.deleteDocument(
+        // Keep a tombstone long enough for offline devices to observe the
+        // deletion during their next pull.
+        await _backend.setDocument(
           restaurantId: restaurantId,
           collection: record.tabla,
           documentId: record.registroId,
+          data: _buildTombstone(record, restaurantId),
+          merge: false,
         );
     }
 
@@ -462,6 +481,8 @@ class SyncCloudService {
 
     final payload = <String, dynamic>{
       ...cleanData,
+      // PATCH with null removes an earlier tombstone if an entity is revived.
+      'deleted_at': null,
       '_sync': {
         'record_id': record.id,
         'operation': record.operacion.name,
@@ -475,6 +496,29 @@ class SyncCloudService {
       payload['id'] = record.registroId;
     }
 
+    return payload;
+  }
+
+  Map<String, dynamic> _buildTombstone(SyncRecord record, String restaurantId) {
+    final payload = <String, dynamic>{
+      'id': record.registroId,
+      'restaurant_id': restaurantId,
+      'deleted_at': DateTime.now().toUtc().toIso8601String(),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+      '_sync': {
+        'record_id': record.id,
+        'operation': record.operacion.name,
+        'source': 'restaurant_app',
+        'created_at_local': record.createdAt.toIso8601String(),
+        'synced_at': _backend.serverTimestamp(),
+      },
+    };
+    if (record.tabla == 'clientes') {
+      final separator = record.registroId.indexOf(':');
+      payload['cedula'] = separator < 0
+          ? record.registroId
+          : record.registroId.substring(separator + 1);
+    }
     return payload;
   }
 }
