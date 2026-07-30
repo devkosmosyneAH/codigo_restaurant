@@ -131,7 +131,6 @@ class RealtimeDatabaseService {
       final value = entry.value;
       if (value == null) continue;
       final normalized = _normalizeValue(value);
-      if (normalized is _DropValue) continue;
       output[key] = normalized;
     }
     return output;
@@ -145,7 +144,6 @@ class RealtimeDatabaseService {
       final nested = <String, dynamic>{};
       for (final entry in value.entries) {
         final normalized = _normalizeValue(entry.value);
-        if (normalized is _DropValue) continue;
         if (normalized != null) {
           nested[entry.key.toString()] = normalized;
         }
@@ -155,11 +153,9 @@ class RealtimeDatabaseService {
     if (value is List) {
       return value
           .map(_normalizeValue)
-          .where((element) => element != null && element is! _DropValue)
+          .where((element) => element != null)
           .toList();
     }
     return value.toString();
   }
 }
-
-class _DropValue {}
