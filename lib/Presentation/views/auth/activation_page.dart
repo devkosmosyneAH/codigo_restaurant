@@ -121,30 +121,6 @@ class ActivationPageState extends State<ActivationPage>
                     const SizedBox(height: 20),
 
                     // Botón atrás (opcional pero elegante)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: IconButton(
-                        onPressed: () =>
-                            GoRouter.of(context).go(AppRouter.login),
-                        icon: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.06),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Padding(padding: const EdgeInsets.all(4)),
-                        ),
-                      ),
-                    ),
-
-                    const Spacer(flex: 1),
 
                     // LOGO ANIMADO
                     ScaleTransition(
