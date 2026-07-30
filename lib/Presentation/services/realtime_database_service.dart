@@ -3,7 +3,7 @@ import 'package:restaurant_app/Presentation/core/constants/app_constants.dart';
 
 class RealtimeDatabaseService {
   RealtimeDatabaseService({FirebaseDatabase? firebaseDatabase})
-      : _firebaseDatabase = firebaseDatabase ?? FirebaseDatabase.instance;
+    : _firebaseDatabase = firebaseDatabase ?? FirebaseDatabase.instance;
 
   final FirebaseDatabase _firebaseDatabase;
 
@@ -11,13 +11,13 @@ class RealtimeDatabaseService {
     final safeRestaurantId = restaurantId.trim().isEmpty
         ? AppConstants.defaultRestaurantId
         : restaurantId.trim();
-    return _firebaseDatabase.ref().child('restaurantes').child(safeRestaurantId);
+    return _firebaseDatabase
+        .ref()
+        .child('restaurantes')
+        .child(safeRestaurantId);
   }
 
-  DatabaseReference _collectionRef(
-    String restaurantId,
-    String collection,
-  ) {
+  DatabaseReference _collectionRef(String restaurantId, String collection) {
     return _restaurantRoot(restaurantId).child(collection);
   }
 
@@ -42,7 +42,11 @@ class RealtimeDatabaseService {
     required String collection,
     required String documentId,
   }) async {
-    final snapshot = await _documentRef(restaurantId, collection, documentId).once();
+    final snapshot = await _documentRef(
+      restaurantId,
+      collection,
+      documentId,
+    ).once();
     if (!snapshot.snapshot.exists) return null;
     return _normalizeMap(snapshot.snapshot.value);
   }

@@ -147,7 +147,10 @@ class AppEnvironment {
     if (_viteGoogleClientId.isNotEmpty) return _viteGoogleClientId;
     if (_nextGoogleClientId.isNotEmpty) return _nextGoogleClientId;
     if (_legacyGoogleClientId.isNotEmpty) return _legacyGoogleClientId;
-    return '125358587893-k8t94o1m266010m2mm7kaip8agu8g27j.apps.googleusercontent.com';
+    // Coincide con el cliente web de `android/app/google-services.json` y
+    // FirebaseAppInitializer. Los clientes iOS/macOS se configuran en sus
+    // respectivos proyectos Xcode; no deben sustituirse desde Dart.
+    return '1062396228506-135fl09mtdad51p3f4njeb3or4vhvdr5.apps.googleusercontent.com';
   }
 
   /// URL base de Firebase Realtime Database.

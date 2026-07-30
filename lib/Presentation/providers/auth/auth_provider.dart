@@ -150,9 +150,6 @@ class AuthChangeNotifier extends ChangeNotifier {
         userId: usuario.id,
         rol: usuario.rol.value,
       );
-      if (sl.isRegistered<DriveMenuConnectionService>()) {
-        await sl<DriveMenuConnectionService>().restoreSessionSilently();
-      }
       if (previousUser != _usuario) {
         debugPrint("AUTH notifyListeners() - restoreSession");
         debugPrint(StackTrace.current.toString());

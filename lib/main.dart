@@ -21,7 +21,6 @@ Future<void> main() async {
   return runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
-      await GoogleAuthService.instance.restoreSession();
 
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.dumpErrorToConsole(details);
@@ -55,6 +54,10 @@ Future<void> main() async {
 
         debugPrint('STEP 5 - FirebaseAppInitializer.initialize');
         await FirebaseAppInitializer.initialize();
+
+        debugPrint('STEP 5.1 - GoogleAuthService.initialize/restoreSession');
+        await GoogleAuthService.instance.initialize();
+        await GoogleAuthService.instance.restoreSession();
 
         debugPrint('STEP 6 - initDependencies');
         await initDependencies();

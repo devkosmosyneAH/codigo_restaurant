@@ -216,7 +216,7 @@ class DriveImageSyncQueueService {
 
       debugPrint(
           'MENU_DRIVE_QUEUE [10] Restaurando sesión Drive silenciosamente');
-      var signedIn = await _driveService.restoreSessionSilently();
+      var signedIn = await _driveService.hasActiveSession();
       if (!signedIn && allowInteractiveSignIn) {
         debugPrint('MENU_DRIVE_QUEUE [11] Intentando signIn interactivo');
         signedIn = await _driveService.signIn();
@@ -333,7 +333,7 @@ class DriveImageSyncQueueService {
       return result;
     }
 
-    var signedIn = await _driveService.restoreSessionSilently();
+    var signedIn = await _driveService.hasActiveSession();
     if (!signedIn && allowInteractiveSignIn) {
       signedIn = await _driveService.signIn();
     }

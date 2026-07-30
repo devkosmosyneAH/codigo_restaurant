@@ -174,7 +174,7 @@ class _FakeDriveFailingService implements DriveBackupService {
   Future<String?> signIn() async => null;
 
   @override
-  Future<String?> signInSilently() async => null;
+  Future<String?> getConnectedEmail() async => null;
 
   @override
   Future<void> signOut() async {}

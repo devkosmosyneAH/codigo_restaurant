@@ -976,7 +976,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
         if (previousDriveFileId != null && previousDriveFileId.isNotEmpty) {
           final signedIn = _driveSessionReady
               ? true
-              : await driveService.restoreSessionSilently();
+              : await driveService.hasActiveSession();
           var deleted = false;
           if (signedIn) {
             deleted = await driveService.tryDeleteProductImage(
@@ -1000,7 +1000,7 @@ class _ProductoFormDialogState extends State<ProductoFormDialog> {
       if ((imagenUrl == null || imagenUrl.isEmpty) && driveFileId != null) {
         final signedIn = _driveSessionReady
             ? true
-            : await driveService.restoreSessionSilently();
+            : await driveService.hasActiveSession();
         var deleted = false;
         if (signedIn) {
           deleted = await driveService.tryDeleteProductImage(driveFileId);

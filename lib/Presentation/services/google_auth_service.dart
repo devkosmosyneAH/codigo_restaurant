@@ -1,574 +1,259 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:restaurant_app/Presentation/core/config/app_environment.dart';
 
-/// Estado de autenticación con Google.
-enum GoogleAuthState { notAuthenticated, authenticating, authenticated, error }
+enum GoogleAuthState {
+  notAuthenticated,
+  restoring,
+  authenticating,
+  authenticated,
+  error,
+}
 
-/// Servicio ÚNICO y centralizado para autenticación con Google.
-///
-/// RESPONSABILIDADES:
-/// - Una sola instancia de GoogleSignIn
-/// - Manejo thread-safe de login/logout/restore
-/// - Protección contra múltiples logins simultáneos
-/// - Gestión de scopes y configuración
-/// - Válido para Android, iOS, Web, Windows, macOS, Linux
-///
-/// T
-/// OD}O LO DEMÁS (Firebase, Drive, etc) DEPENDE DE ESTE SERVICIO.
-class GoogleAuthService {
+/// Única fuente de verdad para la identidad de Google, permisos de Drive y
+/// access token. Google Sign-In es quien persiste la sesión; este servicio solo
+/// refleja el estado que Google devuelve.
+class GoogleAuthService extends ChangeNotifier {
   GoogleAuthService._({GoogleSignIn? googleSignIn})
-    : _googleSignIn = googleSignIn ?? _createDefaultGoogleSignIn() {
-    // Escuchar cambios de usuario para mantener el estado interno y
-    // (re)programar el refresco de token cuando haya sesión activa.
-    _googleSignIn.onCurrentUserChanged.listen((account) {
-      _currentUser = account;
-      if (account == null) {
-        _cancelTokenRefresh();
-      } else {
-        // Programar refresco cuando tengamos un usuario.
-        _scheduleTokenRefresh();
-      }
-    });
+      : _googleSignIn = googleSignIn ?? _createDefaultGoogleSignIn() {
+    _googleSignIn.onCurrentUserChanged.listen(_synchronizeAccount);
   }
 
   static GoogleAuthService? _instance;
+  static GoogleAuthService get instance => _instance ??= GoogleAuthService._();
 
-  // ── Inicialización ───────────────────────────────────────────────────────
-
-  /// Obtiene la instancia única de GoogleAuthService.
-  static GoogleAuthService get instance {
-    _instance ??= GoogleAuthService._();
-    return _instance!;
-  }
-
-  /// Para pruebas: permite inyectar una instancia custom.
   @visibleForTesting
-  static void setInstance(GoogleAuthService instance) {
-    _instance = instance;
-  }
-
-  /// Para pruebas: resetea la instancia.
+  static void setInstance(GoogleAuthService instance) => _instance = instance;
   @visibleForTesting
-  static void reset() {
-    _instance = null;
-  }
+  static void reset() => _instance = null;
 
-  // ── Implementación ───────────────────────────────────────────────────────
+  /// El único catálogo de scopes OAuth de Drive de la aplicación.
+  static const Set<String> driveScopes = <String>{
+    'https://www.googleapis.com/auth/drive.file',
+    'https://www.googleapis.com/auth/drive.appdata',
+  };
+
+  // GIS does not expose `expires_at` through google_sign_in 6.x. A token is
+  // valid for at most one hour, so retain a small margin before requiring a
+  // new user-initiated authorization round on web.
+  static const Duration _webAccessTokenLifetime = Duration(minutes: 55);
 
   final GoogleSignIn _googleSignIn;
   GoogleSignInAccount? _currentUser;
   GoogleAuthState _state = GoogleAuthState.notAuthenticated;
-
-  /// Future compartida para evitar múltiples logins concurrentes.
-  Future<GoogleSignInAccount?>? _loginFuture;
-
-  /// Future compartida para evitar múltiples restorations concurrentes.
+  final Set<String> _grantedScopes = <String>{};
+  String? _accessToken;
+  DateTime? _accessTokenValidUntil;
+  Future<void>? _initializeFuture;
   Future<GoogleSignInAccount?>? _restoreFuture;
+  Future<GoogleSignInAccount?>? _signInFuture;
+  Future<String?>? _tokenFuture;
+  Future<bool>? _authorizationFuture;
 
-  /// Marca si la restauración de sesión silenciosa ya se intentó una vez.
-  // bool _hasRestoredSession = false; // Removed single-attempt flag
-
-  String? _cachedAccessToken;
-  DateTime? _cachedAccessTokenExpiry;
-  Future<String?>? _accessTokenFuture;
-  Timer? _refreshTimer;
-
-  /// Margen antes del expiry para forzar el refresh del token.
-  static const Duration _refreshMargin = Duration(minutes: 5);
-
-  static const List<String> _driveScopes = [
-    'https://www.googleapis.com/auth/drive.file',
-  ];
-
-  /// Comprueba si el usuario actual tiene autorizados los scopes provistos.
-  Future<bool> canAccessScopes(List<String> scopes) async {
-    return await _hasScopes(scopes);
-  }
-
-  /// Solicita scopes adicionales al usuario si todavía no están autorizados.
-  Future<bool> requestScopes(List<String> scopes) async {
-    return await _requestScopes(scopes);
-  }
-
-  // ── Getters ──────────────────────────────────────────────────────────────
-
-  /// Usuario actualmente autenticado, o null.
   GoogleSignInAccount? get currentUser => _currentUser;
-
-  /// Email del usuario autenticado.
   String? get currentEmail => _currentUser?.email;
-
-  /// ¿Hay un usuario autenticado?
-  bool get isSignedIn => _currentUser != null;
-
-  /// Estado actual de autenticación.
+  bool get isAuthenticated => _currentUser != null;
+  bool get isSignedIn => isAuthenticated;
   GoogleAuthState get state => _state;
+  String? get accessToken => _accessToken;
+  DateTime? get accessTokenExpiresAt => _accessTokenValidUntil;
+  Set<String> get grantedScopes => Set.unmodifiable(_grantedScopes);
+  bool get hasDriveAuthorization => driveScopes.every(_grantedScopes.contains);
 
-  // ── Autenticación Interactiva ────────────────────────────────────────────
-
-  /// Inicia sesión interactivamente con Google.
-  ///
-  /// Reutiliza la Future si un login ya está en progreso.
-  /// Thread-safe.
-  Future<GoogleSignInAccount?> signIn() async {
-    if (_loginFuture != null) {
-      debugPrint('google_auth.signIn: Reutilizando Future en progreso');
-      return _loginFuture;
-    }
-
-    if (_restoreFuture != null) {
-      debugPrint(
-        'google_auth.signIn: Esperando restore en progreso antes de iniciar login',
-      );
-      final restored = await _restoreFuture;
-      if (restored != null) {
-        _currentUser = restored;
-        _state = GoogleAuthState.authenticated;
-        return restored;
-      }
-    }
-
-    _state = GoogleAuthState.authenticating;
-    _loginFuture = _performSignIn();
-
-    try {
-      final account = await _loginFuture;
-      if (account != null) {
-        _currentUser = account;
-        _state = GoogleAuthState.authenticated;
-        debugPrint('google_auth.signIn: Exitoso para ${account.email}');
-        _scheduleTokenRefresh();
-      } else {
-        _state = GoogleAuthState.notAuthenticated;
-        debugPrint('google_auth.signIn: Usuario canceló o falló');
-      }
-      return account;
-    } catch (e) {
-      _state = GoogleAuthState.error;
-      debugPrint('google_auth.signIn: Error $e');
-      rethrow;
-    } finally {
-      _loginFuture = null;
-    }
+  /// google_sign_in 6.x se inicializa al crear su única instancia. Este punto
+  /// explícito serializa el arranque y deja preparado el contrato para la UI.
+  Future<void> initialize() {
+    return _initializeFuture ??= Future<void>.value();
   }
 
-  /// Implementación interna de signIn.
-  Future<GoogleSignInAccount?> _performSignIn() async {
-    try {
-      return await _googleSignIn.signIn();
-    } catch (e) {
-      debugPrint('google_auth._performSignIn: Error interno $e');
-      rethrow;
-    }
-  }
+  /// Solo debe invocarse desde main durante el arranque. Nunca abre UI.
+  Future<GoogleSignInAccount?> restoreSession() async {
+    await initialize();
+    if (_restoreFuture != null) return _restoreFuture!;
+    if (isAuthenticated) return _currentUser;
 
-  // ── Autenticación Silenciosa ─────────────────────────────────────────────
-
-  /// Restaura sesión silenciosamente si existe.
-  ///
-  /// Intenta usar la sesión guardada sin mostrar UI.
-  /// Reutiliza la Future si una restauración ya está en progreso.
-  /// Thread-safe.
-  Future<GoogleSignInAccount?> signInSilently() async {
-    if (isSignedIn) {
-      debugPrint('google_auth.signInSilently: Ya hay usuario autenticado');
-      return _currentUser;
-    }
-    if (_loginFuture != null) {
-      debugPrint(
-        'google_auth.signInSilently: Esperando signIn en progreso antes de restaurar',
-      );
-      final logged = await _loginFuture;
-      if (logged != null) {
-        _currentUser = logged;
-        _state = GoogleAuthState.authenticated;
-        return logged;
-      }
-    }
-    // Evitar múltiples restauraciones concurrentes reutilizando la Future.
-    if (_restoreFuture != null) {
-      debugPrint(
-        'google_auth.signInSilently: Reutilizando Future de restauración',
-      );
-      return await _restoreFuture;
-    }
-
-    _restoreFuture = _performSignInSilently();
+    _state = GoogleAuthState.restoring;
+    _notify();
+    _restoreFuture = _googleSignIn.signInSilently();
     try {
       final account = await _restoreFuture;
-      if (account != null) {
-        _currentUser = account;
-        _state = GoogleAuthState.authenticated;
-        debugPrint(
-          'google_auth.signInSilently: Sesión restaurada para ${account.email}',
-        );
-        _scheduleTokenRefresh();
-      } else {
-        debugPrint(
-          'google_auth.signInSilently: No se encontró sesión silenciosa',
-        );
-      }
+      _synchronizeAccount(account);
+      if (account == null) _setState(GoogleAuthState.notAuthenticated);
       return account;
-    } catch (e) {
-      debugPrint('google_auth.signInSilently: Error $e');
+    } catch (error) {
+      debugPrint('google_auth.restoreSession: $error');
+      _clearSession(GoogleAuthState.notAuthenticated);
       return null;
     } finally {
       _restoreFuture = null;
     }
   }
 
-  /// Restaura la sesión una sola vez durante la vida de la aplicación.
-  ///
-  /// Esta llamada es la única que debe ejecutarse desde el arranque del app.
-  Future<GoogleSignInAccount?> restoreSession() async {
-    if (_restoreFuture != null) {
-      debugPrint(
-        'google_auth.restoreSession: reutilizando restoreFuture en progreso',
-      );
-      return await _restoreFuture;
-    }
-    return await signInSilently();
-  }
+  /// Inicio interactivo; debe ejecutarse únicamente como respuesta del usuario.
+  Future<GoogleSignInAccount?> signIn() async {
+    await initialize();
+    if (_signInFuture != null) return _signInFuture!;
+    if (isAuthenticated) return _currentUser;
 
-  /// Implementación interna de signInSilently.
-  Future<GoogleSignInAccount?> _performSignInSilently() async {
+    _setState(GoogleAuthState.authenticating);
+    _signInFuture = _googleSignIn.signIn();
     try {
-      return await _googleSignIn.signInSilently();
-    } catch (e) {
-      debugPrint('google_auth._performSignInSilently: Error interno $e');
-      return null;
-    }
-  }
-
-  // ── Cierre de Sesión ─────────────────────────────────────────────────────
-
-  /// Cierra la sesión actual.
-  Future<void> signOut() async {
-    try {
-      await _googleSignIn.signOut();
-    } catch (e) {
-      debugPrint(
-        'google_auth.signOut: Error al cerrar sesión de GoogleSignIn $e',
-      );
-    } finally {
-      _currentUser = null;
-      _state = GoogleAuthState.notAuthenticated;
-      _cachedAccessToken = null;
-      _cachedAccessTokenExpiry = null;
-      _accessTokenFuture = null;
-      _cancelTokenRefresh();
-      debugPrint('google_auth.signOut: Sesión cerrada');
-    }
-  }
-
-  /// Desconecta completamente de Google (elimina permisos).
-  ///
-  /// Más invasivo que signOut(). Úsalo solo cuando sea necesario.
-  Future<void> disconnect() async {
-    try {
-      await _googleSignIn.disconnect();
-    } catch (e) {
-      debugPrint('google_auth.disconnect: Error $e');
+      final account = await _signInFuture;
+      _synchronizeAccount(account);
+      if (account == null) _setState(GoogleAuthState.notAuthenticated);
+      return account;
+    } catch (error) {
+      _setState(GoogleAuthState.error);
       rethrow;
     } finally {
-      _currentUser = null;
-      _state = GoogleAuthState.notAuthenticated;
-      _cachedAccessToken = null;
-      _cachedAccessTokenExpiry = null;
-      _accessTokenFuture = null;
-      _cancelTokenRefresh();
-      debugPrint('google_auth.disconnect: Desconectado de Google');
+      _signInFuture = null;
     }
   }
 
-  // ── Tokens ───────────────────────────────────────────────────────────────
-
-  /// Obtiene el Access Token del usuario actual.
-  ///
-  /// Solo funciona si [isSignedIn] es true.
-  /// Puede solicitar autorización adicional si es necesario.
-  Future<String?> getAccessToken({
-    bool forceRefresh = false,
-    List<String>? requiredScopes,
-  }) async {
-    final user = _currentUser;
-    if (user == null) {
-      debugPrint('google_auth.getAccessToken: No hay usuario autenticado');
-      return null;
-    }
-
-    if (requiredScopes != null && requiredScopes.isNotEmpty) {
-      final hasScopes = await _hasScopes(requiredScopes);
-      if (!hasScopes) {
-        debugPrint(
-          'google_auth.getAccessToken: Scopes requeridos no autorizados para ${user.email}: $requiredScopes',
-        );
-        return null;
-      }
-    }
-
-    if (!forceRefresh && _cachedAccessToken != null) {
-      final expiry = _cachedAccessTokenExpiry;
-      if (expiry != null && DateTime.now().isBefore(expiry)) {
-        debugPrint(
-          'google_auth.getAccessToken: Reutilizando token cacheado para ${user.email}',
-        );
-        return _cachedAccessToken;
-      }
-    }
-
-    if (_accessTokenFuture != null) {
-      debugPrint('google_auth.getAccessToken: Reutilizando Future de token');
-      return _accessTokenFuture;
-    }
-
-    _accessTokenFuture = _requestAccessToken();
+  /// Autoriza el catálogo central de Drive. En Web puede abrir el diálogo de
+  /// consentimiento, por eso [interactive] debe ser true solo desde un gesto.
+  Future<bool> ensureDriveAuthorized({required bool interactive}) async {
+    if (!isAuthenticated) return false;
+    if (_authorizationFuture != null) return _authorizationFuture!;
+    _authorizationFuture = _performDriveAuthorization(interactive);
     try {
-      final token = await _accessTokenFuture;
-      return token;
+      return await _authorizationFuture!;
     } finally {
-      _accessTokenFuture = null;
+      _authorizationFuture = null;
     }
   }
+
+  Future<bool> _performDriveAuthorization(bool interactive) async {
+    if (kIsWeb) {
+      final authorized = await _googleSignIn.canAccessScopes(
+        driveScopes.toList(),
+      );
+      if (authorized) {
+        _grantedScopes.addAll(driveScopes);
+        _notify();
+        return true;
+      }
+      if (!interactive) return false;
+      final granted = await _googleSignIn.requestScopes(driveScopes.toList());
+      if (granted) {
+        _grantedScopes.addAll(driveScopes);
+        _invalidateAccessToken();
+        _notify();
+      }
+      return granted;
+    }
+
+    // En Android, iOS y macOS los scopes del constructor se conceden junto con
+    // la sesión. canAccessScopes no está implementado en google_sign_in 6.x.
+    _grantedScopes.addAll(driveScopes);
+    _notify();
+    return true;
+  }
+
+  /// Único administrador del access token. Nunca deriva su vencimiento del ID
+  /// token. En nativo la renovación es responsabilidad del SDK; en Web GIS no
+  /// hay refresh token y, al caducar, solo una acción del usuario puede volver
+  /// a autorizar los scopes.
+  Future<String?> getAccessToken({bool forceRefresh = false}) async {
+    if (!isAuthenticated || !hasDriveAuthorization) return null;
+    if (kIsWeb) {
+      if (!forceRefresh && _hasUsableCachedToken) return _accessToken;
+      if (_accessToken != null && !_hasUsableCachedToken) return null;
+    }
+    if (_tokenFuture != null) return _tokenFuture!;
+
+    _tokenFuture = _requestAccessToken();
+    try {
+      return await _tokenFuture!;
+    } finally {
+      _tokenFuture = null;
+    }
+  }
+
+  bool get _hasUsableCachedToken =>
+      _accessToken != null &&
+      _accessTokenValidUntil != null &&
+      DateTime.now().isBefore(_accessTokenValidUntil!);
 
   Future<String?> _requestAccessToken() async {
     try {
-      final auth = await _currentUser!.authentication;
-      final token = auth.accessToken;
-      _cachedAccessToken = token;
-      _cachedAccessTokenExpiry = _decodeJwtExpiry(auth.idToken);
-      if (token == null) {
-        debugPrint(
-          'google_auth.getAccessToken: Token null para ${_currentUser?.email}',
-        );
-      } else {
-        debugPrint(
-          'google_auth.getAccessToken: Token obtenido para ${_currentUser?.email}',
-        );
-        // Tras obtener token, (re)programar refresco en base al expiry.
-        _scheduleTokenRefresh();
-      }
+      final token = (await _currentUser!.authentication).accessToken;
+      if (token == null || token.isEmpty) return null;
+      _accessToken = token;
+      // GIS documenta una vida de una hora y no expone `expires_at` en v6.
+      // En nativo no se mantiene un TTL inventado: pedir authentication al
+      // SDK permite que su almacenamiento/renovación sea la autoridad.
+      _accessTokenValidUntil =
+          kIsWeb ? DateTime.now().add(_webAccessTokenLifetime) : null;
+      _notify();
       return token;
-    } catch (e) {
-      debugPrint('google_auth._requestAccessToken: Error $e');
+    } catch (error) {
+      debugPrint('google_auth.getAccessToken: $error');
       return null;
     }
   }
 
-  void _scheduleTokenRefresh() {
+  Future<void> signOut() async {
     try {
-      _refreshTimer?.cancel();
-
-      // Si no hay usuario autenticado, nada que hacer.
-      final user = _currentUser;
-      if (user == null) return;
-
-      // Si conocemos expiry, programar antes del vencimiento.
-      final expiry = _cachedAccessTokenExpiry;
-      Duration wait;
-      if (expiry != null) {
-        final refreshAt = expiry.subtract(_refreshMargin);
-        wait = refreshAt.difference(DateTime.now());
-        if (wait.isNegative) {
-          // Si ya venció o está dentro del margen, refrescar pronto.
-          wait = const Duration(seconds: 10);
-        }
-      } else {
-        // Si no conocemos expiry, intentar refresh en 50 minutos.
-        wait = const Duration(minutes: 50);
-      }
-
-      _refreshTimer = Timer(wait, () async {
-        debugPrint(
-          'google_auth: intentando refrescar token para ${user.email}',
-        );
-        try {
-          await getAccessToken(forceRefresh: true);
-        } catch (e) {
-          debugPrint('google_auth: error al refrescar token $e');
-        }
-        // Reprogramar si el usuario sigue activo.
-        if (_currentUser != null) _scheduleTokenRefresh();
-      });
-    } catch (e) {
-      debugPrint('google_auth._scheduleTokenRefresh: $e');
+      await _googleSignIn.signOut();
+    } finally {
+      _clearSession(GoogleAuthState.notAuthenticated);
     }
   }
 
-  void _cancelTokenRefresh() {
+  Future<void> disconnect() async {
     try {
-      _refreshTimer?.cancel();
-      _refreshTimer = null;
-    } catch (_) {}
-  }
-
-  Future<String?> getIdToken({bool forceRefresh = false}) async {
-    final user = _currentUser;
-    if (user == null) {
-      debugPrint('google_auth.getIdToken: No hay usuario autenticado');
-      return null;
-    }
-    try {
-      final auth = await user.authentication;
-      return auth.idToken;
-    } catch (e) {
-      debugPrint('google_auth.getIdToken: Error $e');
-      return null;
+      await _googleSignIn.disconnect();
+    } finally {
+      _clearSession(GoogleAuthState.notAuthenticated);
     }
   }
 
-  Future<bool> _hasScopes(List<String> scopes) async {
-    if (_currentUser == null) return false;
-    try {
-      final hasScopes = await _googleSignIn.canAccessScopes(
-        scopes,
-        accessToken: _cachedAccessToken,
+  void _synchronizeAccount(GoogleSignInAccount? account) {
+    final changed = _currentUser?.id != account?.id;
+    _currentUser = account;
+    if (account == null) {
+      _clearSession(GoogleAuthState.notAuthenticated);
+      return;
+    }
+    if (!kIsWeb) _grantedScopes.addAll(driveScopes);
+    _setState(GoogleAuthState.authenticated, notify: changed);
+  }
+
+  void _invalidateAccessToken() {
+    _accessToken = null;
+    _accessTokenValidUntil = null;
+  }
+
+  void _clearSession(GoogleAuthState state) {
+    _currentUser = null;
+    _grantedScopes.clear();
+    _invalidateAccessToken();
+    _setState(state);
+  }
+
+  void _setState(GoogleAuthState state, {bool notify = true}) {
+    _state = state;
+    if (notify) _notify();
+  }
+
+  void _notify() {
+    if (!hasListeners) return;
+    notifyListeners();
+  }
+
+  static GoogleSignIn _createDefaultGoogleSignIn() => GoogleSignIn(
+        scopes: driveScopes.toList(),
+        clientId: AppEnvironment.googleClientId.isEmpty
+            ? null
+            : AppEnvironment.googleClientId,
+        serverClientId: kIsWeb || AppEnvironment.googleClientId.isEmpty
+            ? null
+            : AppEnvironment.googleClientId,
       );
-      debugPrint(
-        'google_auth._hasScopes: ${_currentUser!.email} access $hasScopes for $scopes',
-      );
-      return hasScopes;
-    } catch (e) {
-      debugPrint('google_auth._hasScopes: Error verificando scopes $e');
-      return false;
-    }
-  }
 
-  Future<bool> _requestScopes(List<String> scopes) async {
-    try {
-      final granted = await _googleSignIn.requestScopes(scopes);
-      debugPrint('google_auth._requestScopes: scopes=$scopes granted=$granted');
-      if (!granted) return false;
-      return await _hasScopes(scopes);
-    } catch (e) {
-      debugPrint('google_auth._requestScopes: Error $e');
-      return false;
-    }
-  }
-
-  /// Asegura que la sesión tenga permisos para acceder a Google Drive.
-  ///
-  /// Si `interactive` es false, solo intentará restaurar la sesión y obtener
-  /// el token sin mostrar UI. Retorna `true` si hay token válido.
-  /// Si `interactive` es true, intentará solicitar scopes adicionales y
-  /// forzar un sign-in interactivo para obtener el consentimiento del usuario.
-  Future<bool> ensureDriveAuthenticated({bool interactive = false}) async {
-    final scopes = _driveScopes;
-
-    if (!isSignedIn) {
-      await restoreSession();
-    }
-
-    if (isSignedIn) {
-      if (await _hasScopes(scopes)) {
-        final token = await getAccessToken(
-          forceRefresh: false,
-          requiredScopes: scopes,
-        );
-        if (token != null && token.isNotEmpty) {
-          debugPrint(
-            'google_auth.ensureDriveAuthenticated: Drive autorizado y token válido.',
-          );
-          return true;
-        }
-      }
-    }
-
-    if (!interactive) {
-      return false;
-    }
-
-    if (!isSignedIn) {
-      final account = await signIn();
-      if (account == null) {
-        debugPrint(
-          'google_auth.ensureDriveAuthenticated: signIn interactivo cancelado o fallido.',
-        );
-        return false;
-      }
-    }
-
-    if (!await _hasScopes(scopes)) {
-      final scopesGranted = await _requestScopes(scopes);
-      if (!scopesGranted) {
-        debugPrint(
-          'google_auth.ensureDriveAuthenticated: No se autorizaron los scopes de Drive.',
-        );
-        return false;
-      }
-    }
-
-    final token = await getAccessToken(
-      forceRefresh: true,
-      requiredScopes: scopes,
-    );
-    return token != null && token.isNotEmpty;
-  }
-
-  /// Obtiene los headers Authorization para requests a Google APIs.
-  ///
-  /// Retorna `{'Authorization': 'Bearer <token>'}` o null si no hay token.
-  Future<Map<String, String>?> getAuthorizationHeaders() async {
-    final token = await getAccessToken();
-    if (token == null) return null;
-    return {'Authorization': 'Bearer $token'};
-  }
-
-  // ── Helpers Privados ─────────────────────────────────────────────────────
-
-  static GoogleSignIn _createDefaultGoogleSignIn() {
-    return GoogleSignIn(
-      // En Flutter Web, las sesiones de Google Sign-In se restauran solo si el
-      // cliente solicita los mismos scopes autorizados originalmente.
-      // Para Drive necesitamos mantener el scope entre recargas.
-      scopes: kIsWeb && AppEnvironment.isDriveConfigured
-          ? _driveScopes
-          : const [],
-      clientId: AppEnvironment.googleClientId.isEmpty
-          ? null
-          : AppEnvironment.googleClientId,
-      serverClientId: kIsWeb
-          ? null
-          : AppEnvironment.googleClientId.isEmpty
-          ? null
-          : AppEnvironment.googleClientId,
-    );
-  }
-
-  // ── Limpieza ─────────────────────────────────────────────────────────────
-
-  /// Para pruebas: permite acceder a la instancia interna de GoogleSignIn.
   @visibleForTesting
   GoogleSignIn get googleSignInForTesting => _googleSignIn;
-
-  DateTime? _decodeJwtExpiry(String? token) {
-    if (token == null || token.trim().isEmpty) return null;
-    final parts = token.split('.');
-    if (parts.length < 2) return null;
-
-    try {
-      final payload = utf8.decode(
-        base64Url.decode(base64Url.normalize(parts[1])),
-      );
-      final parsed = jsonDecode(payload);
-      if (parsed is! Map<String, dynamic>) return null;
-      final expRaw = parsed['exp'];
-      if (expRaw is num) {
-        return DateTime.fromMillisecondsSinceEpoch(expRaw.toInt() * 1000);
-      }
-      if (expRaw is String) {
-        final expSeconds = int.tryParse(expRaw);
-        if (expSeconds != null) {
-          return DateTime.fromMillisecondsSinceEpoch(expSeconds * 1000);
-        }
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
 }

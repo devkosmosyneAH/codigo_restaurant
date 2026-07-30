@@ -29,10 +29,9 @@ class DriveResult {
 /// Usa OAuth 2.0 con el scope de appdata (aislado por app, el usuario no
 /// ve estos archivos en su Drive normal).
 class DriveBackupService {
-  DriveBackupService._({
-    DriveAuthCoordinator? driveAuthCoordinator,
-  }) : _driveAuthCoordinator =
-           driveAuthCoordinator ?? DriveAuthCoordinator.instance;
+  DriveBackupService._({DriveAuthCoordinator? driveAuthCoordinator})
+    : _driveAuthCoordinator =
+          driveAuthCoordinator ?? DriveAuthCoordinator.instance;
 
   static DriveBackupService? _instance;
 
@@ -76,14 +75,8 @@ class DriveBackupService {
     return result?.email;
   }
 
-  /// Intenta iniciar sesión silenciosamente (sesión previa).
-  Future<String?> signInSilently() async {
-    final result = await _driveAuthCoordinator.restoreSessionSilently();
-    debugPrint(
-      'drive_backup: signInSilently resultado=${result?.email ?? 'null'}',
-    );
-    return result?.email;
-  }
+  /// Consulta el estado central ya restaurado durante el arranque.
+  Future<String?> getConnectedEmail() async => currentEmail;
 
   /// Cierra sesión.
   Future<void> signOut() async {
@@ -92,12 +85,9 @@ class DriveBackupService {
   }
 
   /// Expone la verificación de permisos para Drive (delegado a DriveAuthCoordinator).
-  Future<bool> ensureDriveAuthenticated({
-    bool interactive = false,
-  }) async {
+  Future<bool> ensureDriveAuthenticated({bool interactive = false}) async {
     final result = await _driveAuthCoordinator.ensureDriveAuthenticated(
       interactive: interactive,
-      requiredScopes: [drive.DriveApi.driveAppdataScope],
     );
     return result.isConnected;
   }
@@ -108,7 +98,6 @@ class DriveBackupService {
     try {
       return await _driveAuthCoordinator.createDriveApi(
         interactive: interactive,
-        requiredScopes: [drive.DriveApi.driveAppdataScope],
       );
     } catch (e) {
       debugPrint('drive_backup._getDriveApi: falla al crear DriveApi: $e');

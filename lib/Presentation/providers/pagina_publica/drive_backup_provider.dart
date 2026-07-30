@@ -60,7 +60,7 @@ class DriveBackupNotifier extends StateNotifier<DriveBackupState> {
   final DriveBackupService _service;
 
   Future<void> _checkSignIn() async {
-    final email = await _service.signInSilently();
+    final email = await _service.getConnectedEmail();
     if (email != null) {
       final lastDate = await _service.lastBackupDate();
       // Verificar si la cuenta ya tiene token Drive válido (sin UI).

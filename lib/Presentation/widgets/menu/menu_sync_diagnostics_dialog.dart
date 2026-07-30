@@ -45,7 +45,7 @@ class _MenuSyncDiagnosticsDialogState extends State<MenuSyncDiagnosticsDialog> {
     setState(() => _isRefreshing = true);
 
     try {
-      final connected = await _driveService.restoreSessionSilently();
+      final connected = await _driveService.hasActiveSession();
       await _queueService.countPendingOperations();
       _diagnostics.updateDriveStatus(
         connected: connected,

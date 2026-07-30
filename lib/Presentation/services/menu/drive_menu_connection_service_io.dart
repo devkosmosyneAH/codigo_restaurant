@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -91,11 +90,12 @@ class DriveMenuConnectionService {
     MenuSyncDiagnosticsService? diagnosticsService,
     DriveAuthCoordinator? driveAuthCoordinator,
     Uuid? uuid,
-  }) : _datasource = datasource,
-       _diagnosticsService = diagnosticsService ?? MenuSyncDiagnosticsService(),
-       _driveAuthCoordinator =
-           driveAuthCoordinator ?? DriveAuthCoordinator.instance,
-       _uuid = uuid ?? const Uuid();
+  })  : _datasource = datasource,
+        _diagnosticsService =
+            diagnosticsService ?? MenuSyncDiagnosticsService(),
+        _driveAuthCoordinator =
+            driveAuthCoordinator ?? DriveAuthCoordinator.instance,
+        _uuid = uuid ?? const Uuid();
 
   String? _lastAuthError;
 
@@ -114,7 +114,7 @@ class DriveMenuConnectionService {
         error: googleSignedIn
             ? null
             : (_lastAuthError ??
-                  'No se pudo autenticar la sesión de Google Drive.'),
+                'No se pudo autenticar la sesión de Google Drive.'),
       );
       return googleSignedIn;
     } catch (e, s) {
@@ -127,19 +127,20 @@ class DriveMenuConnectionService {
     }
   }
 
-  Future<bool> restoreSessionSilently() async {
+  /// Consulta el estado central; la restauración ocurre únicamente en main.
+  Future<bool> hasActiveSession() async {
     try {
-      final restored =
-          await _driveAuthCoordinator.restoreSessionSilently() != null;
+      final restored = _driveAuthCoordinator.isSignedIn;
       _diagnosticsService.updateDriveStatus(
         connected: restored,
         accountEmail: currentEmail,
-        tokenExpiresAt: restored ? await _tryResolveTokenExpiry() : null,
+        tokenExpiresAt:
+            restored ? _driveAuthCoordinator.accessTokenExpiresAt : null,
         error: restored ? null : _lastAuthError,
       );
       return restored;
     } catch (e) {
-      _lastAuthError = 'Error en restoreSessionSilently: $e';
+      _lastAuthError = 'Error consultando la sesión de Drive: $e';
       _diagnosticsService.recordError(_lastAuthError!);
       return false;
     }
@@ -161,14 +162,13 @@ class DriveMenuConnectionService {
   }) async {
     final result = await _driveAuthCoordinator.ensureDriveAuthenticated(
       interactive: interactive,
-      requiredScopes: const [drive.DriveApi.driveFileScope],
     );
 
     if (result.isConnected) {
       _diagnosticsService.updateDriveStatus(
         connected: true,
         accountEmail: currentEmail,
-        tokenExpiresAt: await _tryResolveTokenExpiry(),
+        tokenExpiresAt: _driveAuthCoordinator.accessTokenExpiresAt,
       );
     } else {
       _diagnosticsService.updateDriveStatus(
@@ -188,7 +188,6 @@ class DriveMenuConnectionService {
     try {
       final api = await _driveAuthCoordinator.createDriveApi(
         interactive: allowInteractive,
-        requiredScopes: const [drive.DriveApi.driveFileScope],
       );
       await api.files.list(pageSize: 1);
       debugPrint('drive.auth [io]: validación API Drive OK');
@@ -260,7 +259,6 @@ class DriveMenuConnectionService {
 
     final api = await _driveAuthCoordinator.createDriveApi(
       interactive: true,
-      requiredScopes: const [drive.DriveApi.driveFileScope],
     );
     final newId = _uuid.v4();
     final folderName = 'tenant-$restaurantId-${newId.substring(0, 8)}';
@@ -302,7 +300,6 @@ class DriveMenuConnectionService {
 
     final api = await _driveAuthCoordinator.createDriveApi(
       interactive: true,
-      requiredScopes: const [drive.DriveApi.driveFileScope],
     );
     final perms = await api.permissions.list(
       connection.folderId,
@@ -342,10 +339,8 @@ class DriveMenuConnectionService {
 
       final api = await _driveAuthCoordinator.createDriveApi(
         interactive: true,
-        requiredScopes: const [drive.DriveApi.driveFileScope],
       );
-      final fileName =
-          '$productoId-${DateTime.now().millisecondsSinceEpoch}'
+      final fileName = '$productoId-${DateTime.now().millisecondsSinceEpoch}'
           '.$fileExtension';
       final meta = drive.File()
         ..name = fileName
@@ -407,7 +402,6 @@ class DriveMenuConnectionService {
       );
       final api = await _driveAuthCoordinator.createDriveApi(
         interactive: true,
-        requiredScopes: const [drive.DriveApi.driveFileScope],
       );
       debugPrint('MENU_DRIVE_DELETE [4] API Drive creada');
       await api.files.delete(fileId);
@@ -443,15 +437,13 @@ class DriveMenuConnectionService {
 
     final api = await _driveAuthCoordinator.createDriveApi(
       interactive: true,
-      requiredScopes: const [drive.DriveApi.driveFileScope],
     );
     final output = <DriveStoredFile>[];
     String? pageToken;
 
     do {
       final page = await api.files.list(
-        q:
-            "'${connection.folderId}' in parents and trashed = false and "
+        q: "'${connection.folderId}' in parents and trashed = false and "
             "mimeType != 'application/vnd.google-apps.folder'",
         spaces: 'drive',
         pageSize: 200,
@@ -496,14 +488,12 @@ class DriveMenuConnectionService {
     );
 
     final threshold = DateTime.now().subtract(minAge);
-    final orphanCandidates = allFiles
-        .where((file) {
-          if (normalizedRefs.contains(file.id)) return false;
-          final createdAt = file.createdAt;
-          if (createdAt == null) return false;
-          return createdAt.isBefore(threshold);
-        })
-        .toList(growable: false);
+    final orphanCandidates = allFiles.where((file) {
+      if (normalizedRefs.contains(file.id)) return false;
+      final createdAt = file.createdAt;
+      if (createdAt == null) return false;
+      return createdAt.isBefore(threshold);
+    }).toList(growable: false);
 
     if (dryRun) {
       return DriveCleanupResult(
@@ -530,39 +520,6 @@ class DriveMenuConnectionService {
   }
 
   // â”€â”€ Internals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-  Future<DateTime?> _tryResolveTokenExpiry() async {
-    if (!isSignedIn) return null;
-
-    try {
-      final idToken = await _driveAuthCoordinator.getIdToken();
-      return _decodeJwtExpiry(idToken);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  DateTime? _decodeJwtExpiry(String? token) {
-    if (token == null || token.trim().isEmpty) return null;
-    final parts = token.split('.');
-    if (parts.length < 2) return null;
-
-    try {
-      final payload = utf8.decode(
-        base64Url.decode(base64Url.normalize(parts[1])),
-      );
-      final parsed = jsonDecode(payload);
-      if (parsed is! Map<String, dynamic>) return null;
-      final expRaw = parsed['exp'];
-      final seconds = expRaw is num
-          ? expRaw.toInt()
-          : int.tryParse(expRaw?.toString() ?? '');
-      if (seconds == null || seconds <= 0) return null;
-      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
-    } catch (_) {
-      return null;
-    }
-  }
 
   Future<void> _enablePublicShare(drive.DriveApi api, String folderId) async {
     final permission = drive.Permission()
